@@ -91,8 +91,7 @@ defmodule MongrelDB do
   def health(db) do
     case get(db, "/health") do
       {:ok, _resp} -> {:ok, true}
-      {:error, %{kind: :connection}} -> {:ok, false}
-      {:error, _} -> {:ok, false}
+      {:error, _reason} -> {:ok, false}
     end
   end
 
