@@ -193,12 +193,13 @@ defmodule MongrelDB do
   @doc """
   Execute SQL against the daemon's DataFusion-backed `/sql` endpoint.
 
-  Returns `{:ok, rows}` when the daemon answers in JSON, otherwise
-  `{:ok, []}` (the endpoint may emit Arrow IPC bytes for rich SELECTs).
+  Requests the JSON result format, so a SELECT returns a JSON array of row
+  objects keyed by column name. Returns `{:ok, rows}` for SELECTs, or
+  `{:ok, []}` for statements like INSERT/UPDATE that produce no rows.
   """
   @spec sql(t(), String.t()) :: {:ok, [map()]} | {:error, term()}
   def sql(db, statement) do
-    with {:ok, body} <- post_json(db, "/sql", %{"sql" => statement}) do
+    with {:ok, body} <- post_json(db, "/sql", %{"sql" => statement, "format" => "json"}) do
       rows = if is_list(body), do: body, else: []
       {:ok, rows}
     end
@@ -302,7 +303,21 @@ defmodule MongrelDB do
 
     case result do
       {:ok, {{_http, status, _}, _headers, resp_body}} when status >= 200 and status < 300 ->
-        {:ok, %MongrelDB.HTTPResponse{status: status, body: to_string(resp_body || "")}}
+        body = to_string(resp_body || "")
+
+        # Cap the response body at 256 MB so a runaway query or a misbehaving
+        # daemon cannot exhaust memory.
+        max_bytes = 256 * 1024 * 1024
+
+        if byte_size(body) > max_bytes do
+          {:error,
+           %QueryException{
+             message:
+               "response body exceeds #{max_bytes} bytes (#{byte_size(body)} bytes)"
+           }}
+        else
+          {:ok, %MongrelDB.HTTPResponse{status: status, body: body}}
+        end
 
       {:ok, {{_http, status, _}, _headers, resp_body}} ->
         {:error, status_to_exception(status, to_string(resp_body || ""))}

@@ -54,6 +54,11 @@ defmodule MongrelDB.LiveTest do
              |> QueryBuilder.execute()
 
     assert rows != []
+    # The returned row must carry primary key 2. Confirm via SQL JSON mode,
+    # where rows are keyed by column name.
+    assert {:ok, pk_rows} = MongrelDB.sql(db(), "SELECT id FROM #{table} WHERE id = 2")
+    assert pk_rows != []
+    assert hd(pk_rows)["id"] == 2
   end
 
   @tag :skip_without_server
@@ -68,6 +73,11 @@ defmodule MongrelDB.LiveTest do
              MongrelDB.upsert(db(), table, %{1 => 1, 2 => "alpha", 3 => 99.0}, %{3 => 99.0})
 
     assert {:ok, 1} = MongrelDB.count(db(), table)
+    # Query the row back and verify the upserted value landed. SQL JSON mode
+    # returns rows keyed by column name.
+    assert {:ok, rows} = MongrelDB.sql(db(), "SELECT amount FROM #{table} WHERE id = 1")
+    assert rows != []
+    assert hd(rows)["amount"] == 99.0
   end
 
   @tag :skip_without_server
@@ -106,6 +116,11 @@ defmodule MongrelDB.LiveTest do
              )
 
     assert {:ok, 2} = MongrelDB.count(db(), table)
+    # JSON mode makes SELECT return rows as JSON objects (column names as
+    # keys). Verify both rows come back with the right primary keys.
+    assert {:ok, selected} = MongrelDB.sql(db(), "SELECT id FROM #{table} ORDER BY id")
+    assert length(selected) == 2
+    assert Enum.map(selected, & &1["id"]) == [1, 2]
   end
 
   @tag :skip_without_server
@@ -145,6 +160,12 @@ defmodule MongrelDB.LiveTest do
              |> QueryBuilder.execute()
 
     assert length(rows) == 2
+    # Only rows with id 3 (amount 90) and 4 (amount 100) qualify. Confirm
+    # their exact PK values via SQL JSON mode (rows keyed by column name).
+    assert {:ok, selected} =
+             MongrelDB.sql(db(), "SELECT id FROM #{table} WHERE amount >= 80.0 ORDER BY id")
+
+    assert Enum.map(selected, & &1["id"]) == [3, 4]
   end
 
   @tag :skip_without_server
