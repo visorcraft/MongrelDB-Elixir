@@ -53,7 +53,7 @@ defmodule MongrelDB.LiveTest do
              |> QueryBuilder.where("pk", %{"value" => 2})
              |> QueryBuilder.execute()
 
-    assert length(rows) >= 1
+    assert rows != []
   end
 
   @tag :skip_without_server

@@ -30,15 +30,11 @@ defmodule MongrelDB.JSON do
   defp do_encode(n) when is_integer(n), do: Integer.to_string(n)
 
   defp do_encode(n) when is_float(n) do
-    cond do
-      n != n ->
-        raise ArgumentError, "cannot JSON-encode NaN"
-
-      n == :infinity or n == :negative_infinity ->
-        raise ArgumentError, "cannot JSON-encode Infinity"
-
-      true ->
-        :erlang.float_to_binary(n, [:compact, {:decimals, 17}])
+    # credo:disable-for-next-line Credo.Check.Warning.OperationOnSameValues
+    if n != n do
+      raise ArgumentError, "cannot JSON-encode NaN"
+    else
+      :erlang.float_to_binary(n, [:compact, {:decimals, 17}])
     end
   end
 
@@ -75,24 +71,22 @@ defmodule MongrelDB.JSON do
   end
 
   defp encode_string(s) do
-    chars =
-      for <<byte <- s>>, reduce: [] do
-        acc ->
-          case byte do
-            0x22 -> ['\\"' | acc]
-            0x5C -> ['\\\\' | acc]
-            0x0A -> ['\\n' | acc]
-            0x0D -> ['\\r' | acc]
-            0x09 -> ['\\t' | acc]
-            0x08 -> ['\\b' | acc]
-            0x0C -> ['\\f' | acc]
-            b when b < 0x20 -> [:io_lib.format("\\u~4.16.0b", [b]) | acc]
-            b -> [<<b>> | acc]
-          end
-      end
-
-    chars |> Enum.reverse() |> IO.iodata_to_binary()
+    s
+    |> :binary.bin_to_list()
+    |> Enum.reduce([], fn byte, acc -> [escape_byte(byte) | acc] end)
+    |> Enum.reverse()
+    |> IO.iodata_to_binary()
   end
+
+  defp escape_byte(0x22), do: '\\"'
+  defp escape_byte(0x5C), do: '\\\\'
+  defp escape_byte(0x0A), do: '\\n'
+  defp escape_byte(0x0D), do: '\\r'
+  defp escape_byte(0x09), do: '\\t'
+  defp escape_byte(0x08), do: '\\b'
+  defp escape_byte(0x0C), do: '\\f'
+  defp escape_byte(b) when b < 0x20, do: :io_lib.format("\\u~4.16.0b", [b])
+  defp escape_byte(b), do: <<b>>
 
   # -- Decoding --------------------------------------------------------------
 
@@ -111,18 +105,20 @@ defmodule MongrelDB.JSON do
     if pos >= byte_size(s) do
       {:error, "unexpected end of input"}
     else
-      case :binary.at(s, pos) do
-        ?{ -> decode_object(s, pos + 1)
-        ?[ -> decode_array(s, pos + 1)
-        ?" -> decode_string(s, pos + 1)
-        ?t -> decode_literal(s, pos, "true", true)
-        ?f -> decode_literal(s, pos, "false", false)
-        ?n -> decode_literal(s, pos, "null", nil)
-        c when c == ?- or (c >= ?0 and c <= ?9) -> decode_number(s, pos)
-        _ -> {:error, "unexpected character at position #{pos}"}
-      end
+      dispatch_value(s, pos, :binary.at(s, pos))
     end
   end
+
+  defp dispatch_value(s, pos, c) when c == ?- or (c >= ?0 and c <= ?9),
+    do: decode_number(s, pos)
+
+  defp dispatch_value(s, pos, ?{), do: decode_object(s, pos + 1)
+  defp dispatch_value(s, pos, ?[), do: decode_array(s, pos + 1)
+  defp dispatch_value(s, pos, ?"), do: decode_string(s, pos + 1)
+  defp dispatch_value(s, pos, ?t), do: decode_literal(s, pos, "true", true)
+  defp dispatch_value(s, pos, ?f), do: decode_literal(s, pos, "false", false)
+  defp dispatch_value(s, pos, ?n), do: decode_literal(s, pos, "null", nil)
+  defp dispatch_value(_s, pos, _c), do: {:error, "unexpected character at position #{pos}"}
 
   defp skip_ws(s, pos) do
     if pos < byte_size(s) do
@@ -147,12 +143,9 @@ defmodule MongrelDB.JSON do
 
   defp decode_object_members(s, pos, acc) do
     with {:ok, key, pos} <- decode_string_raw(s, pos),
-         pos = skip_ws(s, pos),
-         :ok <- expect_colon(s, pos),
-         {:ok, value, pos} <- decode_value(s, skip_ws(s, pos + 1)),
-         pos = skip_ws(s, pos),
-         {:ok, acc, pos} <- consume_object_separator(s, pos, Map.put(acc, key, value)) do
-      {:ok, acc, pos}
+         :ok <- expect_colon(s, skip_ws(s, pos)),
+         {:ok, value, pos} <- decode_value(s, skip_ws(s, pos + 1)) do
+      consume_object_separator(s, skip_ws(s, pos), Map.put(acc, key, value))
     end
   end
 
@@ -187,9 +180,13 @@ defmodule MongrelDB.JSON do
   end
 
   defp decode_array_elements(s, pos, acc) do
-    with {:ok, value, pos} <- decode_value(s, pos),
-         pos = skip_ws(s, pos) do
-      consume_array_separator(s, pos, acc ++ [value])
+    case decode_value(s, pos) do
+      {:ok, value, pos} ->
+        pos = skip_ws(s, pos)
+        consume_array_separator(s, pos, acc ++ [value])
+
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -205,70 +202,63 @@ defmodule MongrelDB.JSON do
     end
   end
 
-  defp decode_string(s, pos) do
-    with {:ok, str, pos} <- decode_string_raw(s, pos) do
-      {:ok, str, pos}
-    end
-  end
+  defp decode_string(s, pos), do: decode_string_raw(s, pos)
 
   defp decode_string_raw(s, pos) do
     decode_string_chars(s, pos, [])
   end
 
   defp decode_string_chars(s, pos, acc) do
-    if pos >= byte_size(s) do
-      {:error, "unterminated string"}
+    cond do
+      pos >= byte_size(s) ->
+        {:error, "unterminated string"}
+
+      :binary.at(s, pos) == ?" ->
+        {:ok, IO.iodata_to_binary(Enum.reverse(acc)), pos + 1}
+
+      :binary.at(s, pos) == ?\\ ->
+        decode_escape(s, pos, acc)
+
+      true ->
+        decode_string_chars(s, pos + 1, [<<:binary.at(s, pos)>> | acc])
+    end
+  end
+
+  @escape_chars %{
+    ?" => ?",
+    ?\\ => ?\\,
+    ?/ => ?/,
+    ?n => ?\n,
+    ?r => ?\r,
+    ?t => ?\t,
+    ?b => ?\b,
+    ?f => ?\f
+  }
+
+  defp decode_escape(s, pos, acc) do
+    if pos + 1 >= byte_size(s) do
+      {:error, "unterminated escape"}
     else
-      case :binary.at(s, pos) do
-        ?" ->
-          {:ok, IO.iodata_to_binary(Enum.reverse(acc)), pos + 1}
+      decode_escape_char(s, pos, acc, :binary.at(s, pos + 1))
+    end
+  end
 
-        ?\\ ->
-          if pos + 1 >= byte_size(s) do
-            {:error, "unterminated escape"}
-          else
-            case :binary.at(s, pos + 1) do
-              ?" ->
-                decode_string_chars(s, pos + 2, [?" | acc])
+  defp decode_escape_char(s, pos, acc, ?u), do: decode_unicode_escape(s, pos, acc)
 
-              ?\\ ->
-                decode_string_chars(s, pos + 2, [?\\ | acc])
+  defp decode_escape_char(s, pos, acc, c) when is_map_key(@escape_chars, c) do
+    decode_string_chars(s, pos + 2, [<<@escape_chars[c]>> | acc])
+  end
 
-              ?/ ->
-                decode_string_chars(s, pos + 2, [?/ | acc])
+  defp decode_escape_char(_s, pos, _acc, other),
+    do: {:error, "invalid escape \\#{<<other>>} at #{pos}"}
 
-              ?n ->
-                decode_string_chars(s, pos + 2, ["\n" | acc])
-
-              ?r ->
-                decode_string_chars(s, pos + 2, ["\r" | acc])
-
-              ?t ->
-                decode_string_chars(s, pos + 2, ["\t" | acc])
-
-              ?b ->
-                decode_string_chars(s, pos + 2, ["\b" | acc])
-
-              ?f ->
-                decode_string_chars(s, pos + 2, ["\f" | acc])
-
-              ?u ->
-                if pos + 5 >= byte_size(s) do
-                  {:error, "truncated \\u escape"}
-                else
-                  <<_::binary-size(pos), ?u, hex::binary-size(4), _rest::binary>> = s
-                  cp = String.to_integer(hex, 16)
-                  decode_string_chars(s, pos + 6, [<<cp::utf8>> | acc])
-                end
-
-              other ->
-                {:error, "invalid escape \\#{<<other>>} at #{pos}"}
-            end
-          end
-
-        byte ->
-          decode_string_chars(s, pos + 1, [<<byte>> | acc])
-      end
+  defp decode_unicode_escape(s, pos, acc) do
+    if pos + 5 >= byte_size(s) do
+      {:error, "truncated \\u escape"}
+    else
+      <<_::binary-size(pos), ?u, hex::binary-size(4), _rest::binary>> = s
+      cp = String.to_integer(hex, 16)
+      decode_string_chars(s, pos + 6, [<<cp::utf8>> | acc])
     end
   end
 
@@ -286,20 +276,18 @@ defmodule MongrelDB.JSON do
     {digits, rest_pos} = collect_number(s, pos, [])
     digit_string = IO.iodata_to_binary(Enum.reverse(digits))
 
-    cond do
-      String.contains?(digit_string, ".") or
-        String.contains?(digit_string, "e") or
-          String.contains?(digit_string, "E") ->
-        case Float.parse(digit_string) do
-          {n, ""} -> {:ok, n, rest_pos}
-          _ -> {:error, "invalid number at position #{pos}"}
-        end
-
-      true ->
-        case Integer.parse(digit_string) do
-          {n, ""} -> {:ok, n, rest_pos}
-          _ -> {:error, "invalid number at position #{pos}"}
-        end
+    if String.contains?(digit_string, ".") or
+         String.contains?(digit_string, "e") or
+         String.contains?(digit_string, "E") do
+      case Float.parse(digit_string) do
+        {n, ""} -> {:ok, n, rest_pos}
+        _ -> {:error, "invalid number at position #{pos}"}
+      end
+    else
+      case Integer.parse(digit_string) do
+        {n, ""} -> {:ok, n, rest_pos}
+        _ -> {:error, "invalid number at position #{pos}"}
+      end
     end
   end
 

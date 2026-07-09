@@ -24,8 +24,8 @@ defmodule MongrelDB do
     ConnectionException,
     ConstraintException,
     NotFoundException,
-    QueryException,
     QueryBuilder,
+    QueryException,
     Transaction
   }
 
@@ -225,17 +225,11 @@ defmodule MongrelDB do
 
   @doc "Descriptor for a single table."
   @spec schema_for(t(), String.t()) :: {:ok, map()} | {:error, term()}
-  def schema_for(db, table) do
-    with {:ok, body} <- get_json(db, "/kit/schema/#{table}") do
-      {:ok, body}
-    end
-  end
+  def schema_for(db, table), do: get_json(db, "/kit/schema/#{table}")
 
   @doc "Compact all tables (merge sorted runs)."
   @spec compact(t()) :: {:ok, map()} | {:error, term()}
-  def compact(db) do
-    with {:ok, body} <- post_json(db, "/compact", %{}), do: {:ok, body}
-  end
+  def compact(db), do: post_json(db, "/compact", %{})
 
   @doc "Begin a batch transaction."
   @spec begin_transaction(t()) :: Transaction.t()

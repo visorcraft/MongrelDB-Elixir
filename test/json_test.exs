@@ -72,7 +72,7 @@ defmodule MongrelDB.JSONTest do
     end
 
     test "decodes an object" do
-      assert {:ok, %{"a" => 1, "b" => 2}} = JSON.decode("{\"a\":1,\"b\":2}")
+      assert {:ok, %{"a" => 1, "b" => 2}} = JSON.decode(~S({"a":1,"b":2}))
     end
 
     test "decodes nested structures" do
