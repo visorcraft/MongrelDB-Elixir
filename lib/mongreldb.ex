@@ -282,9 +282,14 @@ defmodule MongrelDB do
         {String.to_charlist(url), cl_headers}
       end
 
+    # {:autoredirect, false} stops :httpc from following redirects, which
+    # would otherwise leak the Authorization header to redirect targets.
+    # The :ssl options are left at :httpc's defaults so the bundled CA
+    # store is used for peer verification (overriding {:verify,
+    # :verify_peer} alone drops the CA bundle and breaks verification).
     http_opts = [
       {:timeout, db.timeout},
-      {:ssl, [{:verify, :verify_peer}]}
+      {:autoredirect, false}
     ]
 
     result =
