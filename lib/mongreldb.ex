@@ -312,8 +312,7 @@ defmodule MongrelDB do
         if byte_size(body) > max_bytes do
           {:error,
            %QueryException{
-             message:
-               "response body exceeds #{max_bytes} bytes (#{byte_size(body)} bytes)"
+             message: "response body exceeds #{max_bytes} bytes (#{byte_size(body)} bytes)"
            }}
         else
           {:ok, %MongrelDB.HTTPResponse{status: status, body: body}}

@@ -59,6 +59,7 @@ defmodule MongrelDB.LiveTest do
     # JSON format and answers with Arrow IPC bytes, so sql() returns {:ok, []} -
     # only verify row content when JSON mode worked.
     assert {:ok, pk_rows} = MongrelDB.sql(db(), "SELECT id FROM #{table} WHERE id = 2")
+
     if pk_rows != [] do
       assert hd(pk_rows)["id"] == 2
     end
@@ -81,6 +82,7 @@ defmodule MongrelDB.LiveTest do
     # JSON format and answers with Arrow IPC bytes, so sql() returns {:ok, []} -
     # only verify row content when JSON mode worked.
     assert {:ok, rows} = MongrelDB.sql(db(), "SELECT amount FROM #{table} WHERE id = 1")
+
     if rows != [] do
       assert hd(rows)["amount"] == 99.0
     end
@@ -127,6 +129,7 @@ defmodule MongrelDB.LiveTest do
     # server ignores the requested JSON format and answers with Arrow IPC bytes,
     # so sql() returns {:ok, []} - only verify row content when JSON mode worked.
     assert {:ok, selected} = MongrelDB.sql(db(), "SELECT id FROM #{table} ORDER BY id")
+
     if selected != [] do
       assert length(selected) == 2
       assert Enum.map(selected, & &1["id"]) == [1, 2]
