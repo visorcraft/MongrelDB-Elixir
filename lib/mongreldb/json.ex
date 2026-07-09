@@ -269,7 +269,10 @@ defmodule MongrelDB.JSON do
     if pos + 5 >= byte_size(s) do
       {:error, "truncated \\u escape"}
     else
-      <<_::binary-size(^pos), ?u, hex::binary-size(4), _rest::binary>> = s
+      # Skip the backslash + 'u' (2 bytes), read 4 hex digits. Using
+      # binary_part/3 keeps this compatible with Elixir 1.14 (the pin-in-
+      # bitstring-size syntax is 1.15+).
+      hex = binary_part(s, pos + 2, 4)
       cp = String.to_integer(hex, 16)
       decode_string_chars(s, pos + 6, [<<cp::utf8>> | acc])
     end
