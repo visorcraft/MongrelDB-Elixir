@@ -155,12 +155,16 @@ defmodule MongrelDB.LiveTest do
 
     assert {:ok, _} = MongrelDB.create_table(db(), table, columns())
 
+    # Idempotency key must be unique per run so a stale key from an earlier
+    # run can't be replayed against this table.
+    key = "order-100-create-#{System.system_time(:nanosecond)}"
+
     # First idempotent commit inserts the row.
     txn =
       MongrelDB.begin_transaction(db())
       |> Transaction.put(table, %{1 => 100, 2 => "order", 3 => 1.0})
 
-    assert {:ok, _, _} = Transaction.commit(txn, idempotency_key: "order-100-create")
+    assert {:ok, _, _} = Transaction.commit(txn, idempotency_key: key)
     assert {:ok, 1} = MongrelDB.count(db(), table)
 
     # A second, identical commit with the SAME key must not duplicate it.
@@ -169,7 +173,7 @@ defmodule MongrelDB.LiveTest do
       |> Transaction.put(table, %{1 => 100, 2 => "order", 3 => 1.0})
 
     # The daemon deduplicates; tolerate either a clean dedupe reply or an error.
-    _ = Transaction.commit(txn2, idempotency_key: "order-100-create")
+    _ = Transaction.commit(txn2, idempotency_key: key)
     assert {:ok, 1} = MongrelDB.count(db(), table)
   end
 

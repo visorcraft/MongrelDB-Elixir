@@ -124,6 +124,15 @@ jobs:
           MONGRELDB_URL: http://127.0.0.1:8453
         run: mix test --include skip_without_server
 
+      - name: Run examples
+        env:
+          MONGRELDB_URL: http://127.0.0.1:8453
+        run: |
+          for ex in examples/*.exs; do
+            echo "=== Running $ex ==="
+            mix run "$ex" || { echo "FAILED: $ex"; exit 1; }
+          done
+
       - name: Dump server log on failure
         if: failure()
         run: cat /tmp/mongreldb-server.log
