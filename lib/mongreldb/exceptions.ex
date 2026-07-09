@@ -3,8 +3,9 @@ defmodule MongrelDB.Exceptions do
   Exception hierarchy for the MongrelDB Elixir client.
 
   Every client error is raised as a struct that implements the
-  `MongrelDB.Exception` behaviour, so callers can match on the specific kind
-  (auth, not found, constraint, connection, query) or on the common base.
+  `Exception` behaviour and the `MongrelDB.Exceptions` callback, so
+  callers can match on the specific kind (auth, not found, constraint,
+  connection, query) or on the common base.
 
       try do
         MongrelDB.put(db, "orders", %{1 => 1})
@@ -13,8 +14,8 @@ defmodule MongrelDB.Exceptions do
           "constraint: \#{e.error_code}"
         e in MongrelDB.AuthException ->
           "not authorized: \#{e.message}"
-        e in MongrelDB.Exception ->
-          "error: \#{e.message}"
+        e in MongrelDB.QueryException ->
+          "query error: \#{e.message}"
       end
   """
 
@@ -25,57 +26,31 @@ defmodule MongrelDB.Exceptions do
   @callback kind() :: atom()
 end
 
-defmodule MongrelDB.Exception do
-  @moduledoc """
-  Common protocol-like helper: the base of the typed exception hierarchy.
-
-  Every MongrelDB exception struct includes a `kind` field set to one of
-  `:auth`, `:not_found`, `:constraint`, `:connection`, or `:query`, plus a
-  human-readable `message`. Concrete exceptions live in
-  `MongrelDB.Exceptions`.
-  """
-
-  @doc "Build the `%{__exception__: true, kind: kind, message: message}` base map."
-  def base(kind, message) when is_atom(kind) and is_binary(message) do
-    %{__exception__: true, kind: kind, message: message}
-  end
-end
-
 defmodule MongrelDB.AuthException do
   @moduledoc "Authentication or authorization failure (HTTP 401/403)."
-  defstruct message: ""
 
   @behaviour MongrelDB.Exceptions
 
-  @impl true
+  defexception [:message]
+
+  @impl MongrelDB.Exceptions
   def kind, do: :auth
 
-  @type t :: %__MODULE__{message: String.t()}
-
-  @doc false
-  def exception(message) when is_binary(message) do
-    %__MODULE__{message: message}
-  end
-
-  @doc false
+  @impl true
   def message(%__MODULE__{message: message}), do: message
 end
 
 defmodule MongrelDB.NotFoundException do
   @moduledoc "The requested resource does not exist (HTTP 404)."
-  defstruct message: ""
 
   @behaviour MongrelDB.Exceptions
 
-  @impl true
+  defexception [:message]
+
+  @impl MongrelDB.Exceptions
   def kind, do: :not_found
 
-  @type t :: %__MODULE__{message: String.t()}
-
-  def exception(message) when is_binary(message) do
-    %__MODULE__{message: message}
-  end
-
+  @impl true
   def message(%__MODULE__{message: message}), do: message
 end
 
@@ -86,12 +61,10 @@ defmodule MongrelDB.ConstraintException do
   Carries the server's `error_code` (for example `UNIQUE_VIOLATION`) and,
   when reported, the `op_index` of the offending operation within the batch.
   """
-  defstruct [:message, :error_code, :op_index]
 
   @behaviour MongrelDB.Exceptions
 
-  @impl true
-  def kind, do: :constraint
+  defexception [:message, :error_code, :op_index]
 
   @type t :: %__MODULE__{
           message: String.t() | nil,
@@ -99,44 +72,44 @@ defmodule MongrelDB.ConstraintException do
           op_index: integer() | nil
         }
 
+  @impl MongrelDB.Exceptions
+  def kind, do: :constraint
+
+  @impl true
+  def message(%__MODULE__{message: message}), do: message
+
+  @impl true
   def exception(opts) when is_list(opts) do
     message = Keyword.get(opts, :message, "Constraint violation")
     error_code = Keyword.get(opts, :error_code)
     op_index = Keyword.get(opts, :op_index)
     %__MODULE__{message: message, error_code: error_code, op_index: op_index}
   end
-
-  def exception(message) when is_binary(message) do
-    %__MODULE__{message: message}
-  end
-
-  def message(%__MODULE__{message: message}), do: message
 end
 
 defmodule MongrelDB.ConnectionException do
   @moduledoc """
   Network-level failure: connection refused, DNS error, broken socket, timeout.
   """
-  defstruct [:message, :reason]
 
   @behaviour MongrelDB.Exceptions
 
-  @impl true
-  def kind, do: :connection
+  defexception [:message, :reason]
 
   @type t :: %__MODULE__{message: String.t(), reason: term()}
 
+  @impl MongrelDB.Exceptions
+  def kind, do: :connection
+
+  @impl true
+  def message(%__MODULE__{message: message}), do: message
+
+  @impl true
   def exception(opts) when is_list(opts) do
     message = Keyword.get(opts, :message, "Connection failure")
     reason = Keyword.get(opts, :reason)
     %__MODULE__{message: message, reason: reason}
   end
-
-  def exception(message) when is_binary(message) do
-    %__MODULE__{message: message}
-  end
-
-  def message(%__MODULE__{message: message}), do: message
 end
 
 defmodule MongrelDB.QueryException do
@@ -144,24 +117,23 @@ defmodule MongrelDB.QueryException do
   Any server-reported error without a more specific type (HTTP 400/500),
   malformed payloads, or JSON failures.
   """
-  defstruct [:message, :reason]
 
   @behaviour MongrelDB.Exceptions
 
-  @impl true
-  def kind, do: :query
+  defexception [:message, :reason]
 
   @type t :: %__MODULE__{message: String.t(), reason: term()}
 
+  @impl MongrelDB.Exceptions
+  def kind, do: :query
+
+  @impl true
+  def message(%__MODULE__{message: message}), do: message
+
+  @impl true
   def exception(opts) when is_list(opts) do
     message = Keyword.get(opts, :message, "Query error")
     reason = Keyword.get(opts, :reason)
     %__MODULE__{message: message, reason: reason}
   end
-
-  def exception(message) when is_binary(message) do
-    %__MODULE__{message: message}
-  end
-
-  def message(%__MODULE__{message: message}), do: message
 end

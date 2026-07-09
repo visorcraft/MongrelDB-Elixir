@@ -120,13 +120,13 @@ defmodule MongrelDB do
   @doc "Drop a table by name."
   @spec drop_table(t(), String.t()) :: :ok | {:error, term()}
   def drop_table(db, name) do
-    with {:ok, _} <- delete(db, "/tables/#{name}"), do: :ok
+    with {:ok, _} <- delete(db, "/tables/#{encode_segment(name)}"), do: :ok
   end
 
   @doc "Row count for a table."
   @spec count(t(), String.t()) :: {:ok, non_neg_integer()} | {:error, term()}
   def count(db, table) do
-    with {:ok, body} <- get_json(db, "/tables/#{table}/count") do
+    with {:ok, body} <- get_json(db, "/tables/#{encode_segment(table)}/count") do
       {:ok, Map.get(body, "count", 0)}
     end
   end
@@ -224,7 +224,7 @@ defmodule MongrelDB do
 
   @doc "Descriptor for a single table."
   @spec schema_for(t(), String.t()) :: {:ok, map()} | {:error, term()}
-  def schema_for(db, table), do: get_json(db, "/kit/schema/#{table}")
+  def schema_for(db, table), do: get_json(db, "/kit/schema/#{encode_segment(table)}")
 
   @doc "Compact all tables (merge sorted runs)."
   @spec compact(t()) :: {:ok, map()} | {:error, term()}
@@ -401,5 +401,11 @@ defmodule MongrelDB do
     cells
     |> Enum.sort_by(fn {k, _v} -> k end)
     |> Enum.flat_map(fn {k, v} -> [k, v] end)
+  end
+
+  # Percent-encode a single URL path segment so a table name containing '/',
+  # '?', '#', or spaces cannot inject extra segments or break routing.
+  defp encode_segment(segment) do
+    URI.encode_www_form(to_string(segment))
   end
 end

@@ -85,7 +85,7 @@ defmodule MongrelDB.LiveTest do
       |> Transaction.put(table, %{1 => 11, 2 => "eve", 3 => 75.0})
       |> Transaction.delete_by_pk(table, 9)
 
-    assert {:ok, _} = Transaction.commit(txn)
+    assert {:ok, _, _} = Transaction.commit(txn)
     assert Transaction.op_count(txn) == 3
     # Seed (9) deleted, 10 and 11 inserted -> 2 rows.
     assert {:ok, 2} = MongrelDB.count(db(), table)

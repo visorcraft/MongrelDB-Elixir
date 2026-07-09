@@ -25,14 +25,14 @@ defmodule MongrelDB.Transaction do
 
   @doc "Stage an insert."
   @spec put(t(), String.t(), map()) :: t()
-  def put(%__MODULE__{} = txn, table, cells) do
+  def put(%__MODULE__{committed: false} = txn, table, cells) do
     op = %{"put" => %{"table" => table, "cells" => cells_to_flat(cells)}}
     %{txn | ops: txn.ops ++ [op]}
   end
 
   @doc "Stage an upsert (insert or update on PK conflict)."
   @spec upsert(t(), String.t(), map(), map() | nil) :: t()
-  def upsert(%__MODULE__{} = txn, table, cells, update_cells \\ nil) do
+  def upsert(%__MODULE__{committed: false} = txn, table, cells, update_cells \\ nil) do
     inner = %{"table" => table, "cells" => cells_to_flat(cells)}
 
     inner =
@@ -46,14 +46,14 @@ defmodule MongrelDB.Transaction do
 
   @doc "Stage a delete by internal row id."
   @spec delete(t(), String.t(), integer()) :: t()
-  def delete(%__MODULE__{} = txn, table, row_id) do
+  def delete(%__MODULE__{committed: false} = txn, table, row_id) do
     op = %{"delete" => %{"table" => table, "row_id" => row_id}}
     %{txn | ops: txn.ops ++ [op]}
   end
 
   @doc "Stage a delete by primary key value."
   @spec delete_by_pk(t(), String.t(), term()) :: t()
-  def delete_by_pk(%__MODULE__{} = txn, table, pk) do
+  def delete_by_pk(%__MODULE__{committed: false} = txn, table, pk) do
     op = %{"delete_by_pk" => %{"table" => table, "pk" => pk}}
     %{txn | ops: txn.ops ++ [op]}
   end
@@ -65,20 +65,27 @@ defmodule MongrelDB.Transaction do
   @doc """
   Commit all staged operations atomically.
 
-  Returns `{:ok, results}` where `results` is a list of per-op result maps.
-  On a constraint violation the daemon rejects the whole batch and returns
+  Returns `{:ok, results}` where `results` is a list of per-op result maps,
+  plus the updated (now-sealed) transaction struct so callers cannot
+  accidentally commit the same transaction twice. On a constraint violation
+  the daemon rejects the whole batch and returns
   `{:error, %MongrelDB.ConstraintException{}}`.
+
+  The transaction is marked committed only after the server confirms, so
+  a network timeout leaves it retryable (use `idempotency_key` for safe
+  retries).
   """
-  @spec commit(t(), keyword()) :: {:ok, [map()]} | {:error, term()}
-  def commit(%__MODULE__{committed: true}) do
+  @spec commit(t(), keyword()) ::
+          {:ok, [map()], t()} | {:error, term()}
+  def commit(%__MODULE__{committed: true} = _txn) do
     {:error, %MongrelDB.QueryException{message: "Transaction already committed"}}
   end
 
-  def commit(%__MODULE__{ops: [], committed: false}) do
-    {:ok, []}
+  def commit(%__MODULE__{ops: [], committed: false} = txn) do
+    {:ok, [], %{txn | committed: true}}
   end
 
-  def commit(%__MODULE__{db: db, ops: ops, committed: false}, opts \\ []) do
+  def commit(%__MODULE__{db: db, ops: ops, committed: false} = txn, opts \\ []) do
     payload = %{"ops" => ops}
     payload = maybe_add_idempotency(payload, Keyword.get(opts, :idempotency_key))
 
@@ -89,7 +96,7 @@ defmodule MongrelDB.Transaction do
           _ -> []
         end
 
-      {:ok, results}
+      {:ok, results, %{txn | committed: true}}
     end
   end
 
