@@ -132,9 +132,16 @@ defmodule MongrelDB.LiveTest do
     assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 4, 2 => "d", 3 => 100.0})
 
     # Only scores >= 80 should come back (90 and 100) - assert the count.
+    # Use range_f64 because column 3 is float64 (plain range expects i64).
     assert {:ok, rows} =
              MongrelDB.query(db(), table)
-             |> QueryBuilder.where("range", %{"column" => 3, "min" => 80.0})
+             |> QueryBuilder.where("range_f64", %{
+               "column" => 3,
+               "min" => 80.0,
+               "max" => 200.0,
+               "min_inclusive" => true,
+               "max_inclusive" => true
+             })
              |> QueryBuilder.execute()
 
     assert length(rows) == 2
