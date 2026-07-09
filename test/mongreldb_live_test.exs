@@ -120,6 +120,59 @@ defmodule MongrelDB.LiveTest do
     assert map_size(desc) > 0
   end
 
+  @tag :skip_without_server
+  test "range query returns only rows within the bounds" do
+    skip_unless_reachable!()
+    table = unique_name("ex_range")
+
+    assert {:ok, _} = MongrelDB.create_table(db(), table, columns())
+    assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 1, 2 => "a", 3 => 50.0})
+    assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 2, 2 => "b", 3 => 75.0})
+    assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 3, 2 => "c", 3 => 90.0})
+    assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 4, 2 => "d", 3 => 100.0})
+
+    # Only scores >= 80 should come back (90 and 100) - assert the count.
+    assert {:ok, rows} =
+             MongrelDB.query(db(), table)
+             |> QueryBuilder.where("range", %{"column" => 3, "min" => 80.0})
+             |> QueryBuilder.execute()
+
+    assert length(rows) == 2
+  end
+
+  @tag :skip_without_server
+  test "schema_for on a nonexistent table returns a NotFoundException" do
+    skip_unless_reachable!()
+
+    assert {:error, %MongrelDB.NotFoundException{}} =
+             MongrelDB.schema_for(db(), "nonexistent_table_xyz")
+  end
+
+  @tag :skip_without_server
+  test "idempotent commit does not duplicate the row" do
+    skip_unless_reachable!()
+    table = unique_name("ex_idem")
+
+    assert {:ok, _} = MongrelDB.create_table(db(), table, columns())
+
+    # First idempotent commit inserts the row.
+    txn =
+      MongrelDB.begin_transaction(db())
+      |> Transaction.put(table, %{1 => 100, 2 => "order", 3 => 1.0})
+
+    assert {:ok, _, _} = Transaction.commit(txn, idempotency_key: "order-100-create")
+    assert {:ok, 1} = MongrelDB.count(db(), table)
+
+    # A second, identical commit with the SAME key must not duplicate it.
+    txn2 =
+      MongrelDB.begin_transaction(db())
+      |> Transaction.put(table, %{1 => 100, 2 => "order", 3 => 1.0})
+
+    # The daemon deduplicates; tolerate either a clean dedupe reply or an error.
+    _ = Transaction.commit(txn2, idempotency_key: "order-100-create")
+    assert {:ok, 1} = MongrelDB.count(db(), table)
+  end
+
   defp columns do
     [
       %{"id" => 1, "name" => "id", "ty" => "int64", "primary_key" => true, "nullable" => false},
