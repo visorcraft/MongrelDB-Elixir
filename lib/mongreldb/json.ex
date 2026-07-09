@@ -83,7 +83,7 @@ defmodule MongrelDB.JSON do
             0x09 -> ['\\t' | acc]
             0x08 -> ['\\b' | acc]
             0x0C -> ['\\f' | acc]
-            b when b < 0x20 -> [:io_lib.format("\\u~4.16.0b", [b) | acc]
+            b when b < 0x20 -> [:io_lib.format("\\u~4.16.0b", [b]) | acc]
             b -> [<<b>> | acc]
           end
       end
