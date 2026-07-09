@@ -78,7 +78,7 @@ defmodule MongrelDB.Transaction do
     {:ok, []}
   end
 
-  def commit(%__MODULE__{db: db, ops: ops, committed: false} = txn, opts \\ []) do
+  def commit(%__MODULE__{db: db, ops: ops, committed: false}, opts \\ []) do
     payload = %{"ops" => ops}
     payload = maybe_add_idempotency(payload, Keyword.get(opts, :idempotency_key))
 

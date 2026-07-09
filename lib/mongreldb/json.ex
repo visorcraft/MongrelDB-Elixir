@@ -17,7 +17,7 @@ defmodule MongrelDB.JSON do
   @doc "Encode an Elixir term to a JSON binary."
   @spec encode(term()) :: {:ok, binary()} | {:error, term()}
   def encode(value) do
-    {:ok, do_encode(value)}
+    {:ok, IO.iodata_to_binary(do_encode(value))}
   rescue
     e in [ArgumentError] ->
       {:error, Exception.message(e)}
@@ -60,7 +60,9 @@ defmodule MongrelDB.JSON do
       map
       |> Enum.sort_by(fn {k, _v} -> to_string(k) end)
       |> Enum.map_join(",", fn {k, v} ->
-        [encode_string(to_string(k)), ":", do_encode(v)]
+        # Keys must be JSON strings: "key":value. encode_string/1 only
+        # escapes content, so the surrounding quotes are added here.
+        [?", encode_string(to_string(k)), "\":", do_encode(v)]
       end)
 
     ["{", inner, "}"]
@@ -78,13 +80,13 @@ defmodule MongrelDB.JSON do
     |> IO.iodata_to_binary()
   end
 
-  defp escape_byte(0x22), do: '\\"'
-  defp escape_byte(0x5C), do: '\\\\'
-  defp escape_byte(0x0A), do: '\\n'
-  defp escape_byte(0x0D), do: '\\r'
-  defp escape_byte(0x09), do: '\\t'
-  defp escape_byte(0x08), do: '\\b'
-  defp escape_byte(0x0C), do: '\\f'
+  defp escape_byte(0x22), do: "\\\""
+  defp escape_byte(0x5C), do: "\\\\"
+  defp escape_byte(0x0A), do: "\\n"
+  defp escape_byte(0x0D), do: "\\r"
+  defp escape_byte(0x09), do: "\\t"
+  defp escape_byte(0x08), do: "\\b"
+  defp escape_byte(0x0C), do: "\\f"
   defp escape_byte(b) when b < 0x20, do: :io_lib.format("\\u~4.16.0b", [b])
   defp escape_byte(b), do: <<b>>
 
@@ -142,10 +144,21 @@ defmodule MongrelDB.JSON do
   end
 
   defp decode_object_members(s, pos, acc) do
-    with {:ok, key, pos} <- decode_string_raw(s, pos),
+    # The key starts with a double quote; decode_string_raw expects to be
+    # positioned just past it (it scans until the closing quote).
+    with :ok <- expect_open_quote(s, pos),
+         {:ok, key, pos} <- decode_string_raw(s, pos + 1),
          :ok <- expect_colon(s, skip_ws(s, pos)),
          {:ok, value, pos} <- decode_value(s, skip_ws(s, pos + 1)) do
       consume_object_separator(s, skip_ws(s, pos), Map.put(acc, key, value))
+    end
+  end
+
+  defp expect_open_quote(s, pos) do
+    if pos < byte_size(s) and :binary.at(s, pos) == ?" do
+      :ok
+    else
+      {:error, "expected string key in object at #{pos}"}
     end
   end
 
@@ -256,7 +269,7 @@ defmodule MongrelDB.JSON do
     if pos + 5 >= byte_size(s) do
       {:error, "truncated \\u escape"}
     else
-      <<_::binary-size(pos), ?u, hex::binary-size(4), _rest::binary>> = s
+      <<_::binary-size(^pos), ?u, hex::binary-size(4), _rest::binary>> = s
       cp = String.to_integer(hex, 16)
       decode_string_chars(s, pos + 6, [<<cp::utf8>> | acc])
     end

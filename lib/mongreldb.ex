@@ -38,7 +38,7 @@ defmodule MongrelDB do
           timeout: timeout()
         }
 
-  @enforce_key [:base_url]
+  @enforce_keys [:base_url]
   defstruct [:base_url, :token, :username, :password, :headers, :timeout]
 
   @doc """

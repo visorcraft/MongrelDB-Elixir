@@ -21,8 +21,6 @@ defmodule MongrelDB.QueryBuilder do
       |> QueryBuilder.execute()
   """
 
-  alias MongrelDB.QueryException
-
   @type t :: %__MODULE__{
           db: MongrelDB.t(),
           table: String.t(),
@@ -85,7 +83,6 @@ defmodule MongrelDB.QueryBuilder do
 
       case body do
         {:ok, data} when is_map(data) ->
-          truncated = Map.get(data, "truncated", false)
           rows = Map.get(data, "rows", [])
           {:ok, rows}
 

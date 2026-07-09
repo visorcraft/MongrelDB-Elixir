@@ -43,8 +43,8 @@ defmodule MongrelDB.LiveTest do
     table = unique_name("ex_items")
 
     assert {:ok, _} = MongrelDB.create_table(db(), table, columns())
-    assert :ok = MongrelDB.put(db(), table, %{1 => 1, 2 => "alpha", 3 => 10.0})
-    assert :ok = MongrelDB.put(db(), table, %{1 => 2, 2 => "beta", 3 => 25.0})
+    assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 1, 2 => "alpha", 3 => 10.0})
+    assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 2, 2 => "beta", 3 => 25.0})
 
     assert {:ok, 2} = MongrelDB.count(db(), table)
 
@@ -62,7 +62,7 @@ defmodule MongrelDB.LiveTest do
     table = unique_name("ex_upsert")
 
     assert {:ok, _} = MongrelDB.create_table(db(), table, columns())
-    assert :ok = MongrelDB.put(db(), table, %{1 => 1, 2 => "alpha", 3 => 10.0})
+    assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 1, 2 => "alpha", 3 => 10.0})
 
     assert {:ok, _} =
              MongrelDB.upsert(db(), table, %{1 => 1, 2 => "alpha", 3 => 99.0}, %{3 => 99.0})
@@ -77,14 +77,18 @@ defmodule MongrelDB.LiveTest do
 
     assert {:ok, _} = MongrelDB.create_table(db(), table, columns())
 
+    # Seed a row outside the batch so the in-batch delete_by_pk can see it.
+    assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 9, 2 => "seed", 3 => 1.0})
+
     txn =
       Transaction.put(MongrelDB.begin_transaction(db()), table, %{1 => 10, 2 => "dave", 3 => 50.0})
       |> Transaction.put(table, %{1 => 11, 2 => "eve", 3 => 75.0})
-      |> Transaction.delete_by_pk(table, 10)
+      |> Transaction.delete_by_pk(table, 9)
 
     assert {:ok, _} = Transaction.commit(txn)
     assert Transaction.op_count(txn) == 3
-    assert {:ok, 1} = MongrelDB.count(db(), table)
+    # Seed (9) deleted, 10 and 11 inserted -> 2 rows.
+    assert {:ok, 2} = MongrelDB.count(db(), table)
   end
 
   @tag :skip_without_server
@@ -93,7 +97,7 @@ defmodule MongrelDB.LiveTest do
     table = unique_name("ex_sql")
 
     assert {:ok, _} = MongrelDB.create_table(db(), table, columns())
-    assert :ok = MongrelDB.put(db(), table, %{1 => 1, 2 => "alpha", 3 => 1.0})
+    assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 1, 2 => "alpha", 3 => 1.0})
 
     assert {:ok, _} =
              MongrelDB.sql(
@@ -137,6 +141,11 @@ defmodule MongrelDB.LiveTest do
   end
 
   defp skip_unless_reachable! do
-    unless server_reachable?(), do: ExUnit.skip("MONGRELDB_URL not reachable")
+    # The live suite is excluded by default (test_helper.exs). CI enables it
+    # only after booting mongreldb-server. If we somehow run without a server,
+    # fail loudly so the run surfaces it instead of looking like a skip.
+    unless server_reachable?() do
+      flunk("MONGRELDB_URL not reachable at #{@server_url}")
+    end
   end
 end
