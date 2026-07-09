@@ -63,7 +63,9 @@ defmodule MongrelDB.LiveTest do
 
     assert {:ok, _} = MongrelDB.create_table(db(), table, columns())
     assert :ok = MongrelDB.put(db(), table, %{1 => 1, 2 => "alpha", 3 => 10.0})
-    assert {:ok, _} = MongrelDB.upsert(db(), table, %{1 => 1, 2 => "alpha", 3 => 99.0}, %{3 => 99.0})
+
+    assert {:ok, _} =
+             MongrelDB.upsert(db(), table, %{1 => 1, 2 => "alpha", 3 => 99.0}, %{3 => 99.0})
 
     assert {:ok, 1} = MongrelDB.count(db(), table)
   end
@@ -92,7 +94,12 @@ defmodule MongrelDB.LiveTest do
 
     assert {:ok, _} = MongrelDB.create_table(db(), table, columns())
     assert :ok = MongrelDB.put(db(), table, %{1 => 1, 2 => "alpha", 3 => 1.0})
-    assert {:ok, _} = MongrelDB.sql(db(), "INSERT INTO #{table} (id, label, amount) VALUES (2, 'beta', 2.0)")
+
+    assert {:ok, _} =
+             MongrelDB.sql(
+               db(),
+               "INSERT INTO #{table} (id, label, amount) VALUES (2, 'beta', 2.0)"
+             )
 
     assert {:ok, 2} = MongrelDB.count(db(), table)
   end
@@ -112,8 +119,20 @@ defmodule MongrelDB.LiveTest do
   defp columns do
     [
       %{"id" => 1, "name" => "id", "ty" => "int64", "primary_key" => true, "nullable" => false},
-      %{"id" => 2, "name" => "label", "ty" => "varchar", "primary_key" => false, "nullable" => false},
-      %{"id" => 3, "name" => "amount", "ty" => "float64", "primary_key" => false, "nullable" => false}
+      %{
+        "id" => 2,
+        "name" => "label",
+        "ty" => "varchar",
+        "primary_key" => false,
+        "nullable" => false
+      },
+      %{
+        "id" => 3,
+        "name" => "amount",
+        "ty" => "float64",
+        "primary_key" => false,
+        "nullable" => false
+      }
     ]
   end
 

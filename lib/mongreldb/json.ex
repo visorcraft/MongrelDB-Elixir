@@ -31,9 +31,12 @@ defmodule MongrelDB.JSON do
 
   defp do_encode(n) when is_float(n) do
     cond do
-      n != n -> raise ArgumentError, "cannot JSON-encode NaN"
+      n != n ->
+        raise ArgumentError, "cannot JSON-encode NaN"
+
       n == :infinity or n == :negative_infinity ->
         raise ArgumentError, "cannot JSON-encode Infinity"
+
       true ->
         :erlang.float_to_binary(n, [:compact, {:decimals, 17}])
     end
@@ -53,7 +56,7 @@ defmodule MongrelDB.JSON do
 
   defp do_encode(%{__struct__: _} = struct) do
     raise ArgumentError,
-      "cannot JSON-encode struct #{inspect(struct.__struct__)}"
+          "cannot JSON-encode struct #{inspect(struct.__struct__)}"
   end
 
   defp do_encode(map) when is_map(map) do
@@ -225,14 +228,30 @@ defmodule MongrelDB.JSON do
             {:error, "unterminated escape"}
           else
             case :binary.at(s, pos + 1) do
-              ?" -> decode_string_chars(s, pos + 2, [?" | acc])
-              ?\\ -> decode_string_chars(s, pos + 2, [?\\ | acc])
-              ?/ -> decode_string_chars(s, pos + 2, [?/ | acc])
-              ?n -> decode_string_chars(s, pos + 2, ["\n" | acc])
-              ?r -> decode_string_chars(s, pos + 2, ["\r" | acc])
-              ?t -> decode_string_chars(s, pos + 2, ["\t" | acc])
-              ?b -> decode_string_chars(s, pos + 2, ["\b" | acc])
-              ?f -> decode_string_chars(s, pos + 2, ["\f" | acc])
+              ?" ->
+                decode_string_chars(s, pos + 2, [?" | acc])
+
+              ?\\ ->
+                decode_string_chars(s, pos + 2, [?\\ | acc])
+
+              ?/ ->
+                decode_string_chars(s, pos + 2, [?/ | acc])
+
+              ?n ->
+                decode_string_chars(s, pos + 2, ["\n" | acc])
+
+              ?r ->
+                decode_string_chars(s, pos + 2, ["\r" | acc])
+
+              ?t ->
+                decode_string_chars(s, pos + 2, ["\t" | acc])
+
+              ?b ->
+                decode_string_chars(s, pos + 2, ["\b" | acc])
+
+              ?f ->
+                decode_string_chars(s, pos + 2, ["\f" | acc])
+
               ?u ->
                 if pos + 5 >= byte_size(s) do
                   {:error, "truncated \\u escape"}
@@ -269,7 +288,7 @@ defmodule MongrelDB.JSON do
 
     cond do
       String.contains?(digit_string, ".") or
-          String.contains?(digit_string, "e") or
+        String.contains?(digit_string, "e") or
           String.contains?(digit_string, "E") ->
         case Float.parse(digit_string) do
           {n, ""} -> {:ok, n, rest_pos}

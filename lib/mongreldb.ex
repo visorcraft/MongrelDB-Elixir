@@ -112,7 +112,8 @@ defmodule MongrelDB do
   """
   @spec create_table(t(), String.t(), [map()]) :: {:ok, non_neg_integer()} | {:error, term()}
   def create_table(db, name, columns) do
-    with {:ok, body} <- post_json(db, "/kit/create_table", %{"name" => name, "columns" => columns}) do
+    with {:ok, body} <-
+           post_json(db, "/kit/create_table", %{"name" => name, "columns" => columns}) do
       {:ok, Map.get(body, "table_id", 0)}
     end
   end
@@ -380,6 +381,7 @@ defmodule MongrelDB do
 
   defp decode_json!(""), do: %{}
   defp decode_json!("[" <> _ = body), do: decode_list!(body)
+
   defp decode_json!(body) when is_binary(body) do
     case MongrelDB.JSON.decode(body) do
       {:ok, value} -> value

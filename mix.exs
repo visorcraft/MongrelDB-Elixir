@@ -59,8 +59,9 @@ defmodule MongrelDB.MixProject do
   defp docs do
     [
       main: "readme",
-      extras: ["README.md"] ++
-        Path.wildcard("docs/*.md"),
+      extras:
+        ["README.md"] ++
+          Path.wildcard("docs/*.md"),
       source_ref: "master",
       source_url: @source_url,
       groups_for_extras: groups_for_extras()
