@@ -1,0 +1,30 @@
+# Mix build artifacts
+/_build/
+/cover/
+/deps/
+/doc/
+
+# Erlang
+erl_crash.dump
+
+# Dialyzer
+*.plt
+*.plt.bin
+
+# IDE
+.elixir_ls/
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Agent / assistant instruction files are workspace-local, never published
+AGENTS.md
+CLAUDE.md
+.cursorrules
+.zcode/
