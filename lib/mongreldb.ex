@@ -303,20 +303,7 @@ defmodule MongrelDB do
 
     case result do
       {:ok, {{_http, status, _}, _headers, resp_body}} when status >= 200 and status < 300 ->
-        body = to_string(resp_body || "")
-
-        # Cap the response body at 256 MB so a runaway query or a misbehaving
-        # daemon cannot exhaust memory.
-        max_bytes = 256 * 1024 * 1024
-
-        if byte_size(body) > max_bytes do
-          {:error,
-           %QueryException{
-             message: "response body exceeds #{max_bytes} bytes (#{byte_size(body)} bytes)"
-           }}
-        else
-          {:ok, %MongrelDB.HTTPResponse{status: status, body: body}}
-        end
+        handle_success(status, resp_body)
 
       {:ok, {{_http, status, _}, _headers, resp_body}} ->
         {:error, status_to_exception(status, to_string(resp_body || ""))}
@@ -339,6 +326,21 @@ defmodule MongrelDB do
 
   defp build_charlist_headers(headers) do
     Enum.map(headers, fn {k, v} -> {String.to_charlist(k), String.to_charlist(v)} end)
+  end
+
+  # Build a success response, enforcing a 256 MB body size cap.
+  defp handle_success(status, resp_body) do
+    body = to_string(resp_body || "")
+    max_bytes = 256 * 1024 * 1024
+
+    if byte_size(body) > max_bytes do
+      {:error,
+       %QueryException{
+         message: "response body exceeds #{max_bytes} bytes (#{byte_size(body)} bytes)"
+       }}
+    else
+      {:ok, %MongrelDB.HTTPResponse{status: status, body: body}}
+    end
   end
 
   defp status_to_exception(status, body) do
