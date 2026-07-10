@@ -363,16 +363,20 @@ defmodule MongrelDB do
   # Find the Content-Length header (case-insensitive) and parse its integer
   # value. Returns {:ok, integer} or :error when absent/invalid.
   defp content_length(headers) do
-    Enum.reduce_while(headers, :error, fn {key, value}, _acc ->
-      if String.downcase(to_string(key)) == "content-length" do
-        case Integer.parse(to_string(value)) do
-          {len, _} -> {:halt, {:ok, len}}
-          :error -> {:halt, :error}
-        end
-      else
-        {:cont, :error}
-      end
+    headers
+    |> Enum.find(:error, fn {key, _} ->
+      String.downcase(to_string(key)) == "content-length"
     end)
+    |> case do
+      :error ->
+        :error
+
+      {_, value} ->
+        case Integer.parse(to_string(value)) do
+          {len, _} -> {:ok, len}
+          :error -> :error
+        end
+    end
   end
 
   defp status_to_exception(status, body) do
