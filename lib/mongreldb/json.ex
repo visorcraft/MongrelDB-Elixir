@@ -266,7 +266,8 @@ defmodule MongrelDB.JSON do
     do: {:error, "invalid escape \\#{<<other>>} at #{pos}"}
 
   defp decode_unicode_escape(s, pos, acc) do
-    if pos + 5 >= byte_size(s) do
+    # Need 6 bytes: backslash, 'u', then 4 hex digits.
+    if pos + 6 > byte_size(s) do
       {:error, "truncated \\u escape"}
     else
       # Skip the backslash + 'u' (2 bytes), read 4 hex digits. Using
@@ -274,7 +275,40 @@ defmodule MongrelDB.JSON do
       # bitstring-size syntax is 1.15+).
       hex = binary_part(s, pos + 2, 4)
       cp = String.to_integer(hex, 16)
-      decode_string_chars(s, pos + 6, [<<cp::utf8>> | acc])
+
+      cond do
+        # High surrogate (0xD800-0xDBFF): the UTF-16 pair's low surrogate
+        # must follow in the next \uXXXX. <<cp::utf8>> rejects bare surrogate
+        # codepoints, so combine the pair into a scalar above U+FFFF first.
+        cp >= 0xD800 and cp <= 0xDBFF ->
+          combine_surrogate_pair(s, pos, acc, cp)
+
+        # Lone low surrogate (0xDC00-0xDFFF) is invalid.
+        cp >= 0xDC00 and cp <= 0xDFFF ->
+          {:error, "unexpected low surrogate at #{pos}"}
+
+        true ->
+          decode_string_chars(s, pos + 6, [<<cp::utf8>> | acc])
+      end
+    end
+  end
+
+  defp combine_surrogate_pair(s, pos, acc, hi) do
+    # The trailing \uXXXX escape starts at pos + 6 and spans 6 bytes
+    # (\\, u, and 4 hex digits), so we need access up to pos + 11.
+    if pos + 12 > byte_size(s) or :binary.at(s, pos + 6) != ?\\ or
+         :binary.at(s, pos + 7) != ?u do
+      {:error, "lone high surrogate at #{pos}"}
+    else
+      hex = binary_part(s, pos + 8, 4)
+      lo = String.to_integer(hex, 16)
+
+      if lo >= 0xDC00 and lo <= 0xDFFF do
+        cp = 0x10000 + (hi - 0xD800) * 0x400 + (lo - 0xDC00)
+        decode_string_chars(s, pos + 12, [<<cp::utf8>> | acc])
+      else
+        {:error, "lone high surrogate at #{pos}"}
+      end
     end
   end
 
