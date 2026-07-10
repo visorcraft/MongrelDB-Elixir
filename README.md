@@ -189,6 +189,28 @@ end
 {:ok, _} = MongrelDB.sql(db, "SELECT id, ROW_NUMBER() OVER (PARTITION BY customer ORDER BY amount DESC) FROM orders")
 ```
 
+## Schema constraints
+
+Columns can carry enum variants and a default value on the descriptor itself.
+`default_value` is the server-side alias for `default_expr`. The Elixir client
+forwards the map keys you supply verbatim.
+
+```elixir
+MongrelDB.create_table(db, "tasks", [
+  %{"id" => 1, "name" => "id",     "ty" => "int64", "primary_key" => true,  "nullable" => false},
+  %{
+    "id" => 2,
+    "name" => "status",
+    "ty" => "enum",
+    "enum_variants" => ["active", "paused", "archived"],
+    "default_value" => "active"
+  }
+])
+```
+
+Regex `CHECK` constraints are also forwarded the same way (no client-side
+validation; the engine enforces them at commit time).
+
 ## User and role management
 
 User and role administration is done through SQL against the `/sql` endpoint.

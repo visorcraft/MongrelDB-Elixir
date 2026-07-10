@@ -24,17 +24,26 @@ try do
     MongrelDB.create_table(db, table, [
       %{"id" => 1, "name" => "id", "ty" => "int64", "primary_key" => true, "nullable" => false},
       %{"id" => 2, "name" => "label", "ty" => "varchar", "primary_key" => false, "nullable" => false},
-      %{"id" => 3, "name" => "amount", "ty" => "float64", "primary_key" => false, "nullable" => false}
+      %{"id" => 3, "name" => "amount", "ty" => "float64", "primary_key" => false, "nullable" => false},
+      # Enum column: variants ride on the column descriptor, default_value
+      # (server alias for default_expr) seeds new rows.
+      %{
+        "id" => 4,
+        "name" => "status",
+        "ty" => "enum",
+        "enum_variants" => ["active", "paused", "archived"],
+        "default_value" => "active"
+      }
     ])
 
   # MongrelDB.put/4 returns {:ok, map()}, not :ok.
-  {:ok, _} = MongrelDB.put(db, table, %{1 => 1, 2 => "first", 3 => 10.0})
-  {:ok, _} = MongrelDB.put(db, table, %{1 => 2, 2 => "second", 3 => 20.0})
+  {:ok, _} = MongrelDB.put(db, table, %{1 => 1, 2 => "first", 3 => 10.0, 4 => "active"})
+  {:ok, _} = MongrelDB.put(db, table, %{1 => 2, 2 => "second", 3 => 20.0, 4 => "paused"})
   {:ok, count} = MongrelDB.count(db, table)
   IO.puts("count: #{count}")
 
   # Upsert: change the second row.
-  {:ok, _} = MongrelDB.upsert(db, table, %{1 => 2, 2 => "second", 3 => 42.0}, %{3 => 42.0})
+  {:ok, _} = MongrelDB.upsert(db, table, %{1 => 2, 2 => "second", 3 => 42.0, 4 => "paused"}, %{3 => 42.0})
 
   # Read it back via the query builder.
   {:ok, rows} =

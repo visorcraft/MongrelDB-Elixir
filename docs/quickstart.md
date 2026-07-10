@@ -60,6 +60,22 @@ MongrelDB.create_table(db, "orders", [
 {:ok, 2} = MongrelDB.count(db, "orders")
 ```
 
+### Schema constraints
+
+Columns can carry `enum_variants` and a `default_value` on the descriptor
+itself; the server also accepts `default_expr` as an alias for `default_value`.
+The client forwards the map keys you supply verbatim.
+
+```elixir
+%{
+  "id" => 4,
+  "name" => "status",
+  "ty" => "enum",
+  "enum_variants" => ["active", "paused", "archived"],
+  "default_value" => "active"
+}
+```
+
 Cells are passed as a map from column id to value.
 
 ## Run a query
