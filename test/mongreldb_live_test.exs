@@ -55,14 +55,9 @@ defmodule MongrelDB.LiveTest do
 
     assert rows != []
     # The returned row must carry primary key 2. Confirm via SQL JSON mode,
-    # where rows are keyed by column name. An old server ignores the requested
-    # JSON format and answers with Arrow IPC bytes, so sql() returns {:ok, []} -
-    # only verify row content when JSON mode worked.
+    # where rows are keyed by column name.
     assert {:ok, pk_rows} = MongrelDB.sql(db(), "SELECT id FROM #{table} WHERE id = 2")
-
-    if pk_rows != [] do
-      assert hd(pk_rows)["id"] == 2
-    end
+    assert hd(pk_rows)["id"] == 2
   end
 
   @tag :skip_without_server
@@ -78,14 +73,9 @@ defmodule MongrelDB.LiveTest do
 
     assert {:ok, 1} = MongrelDB.count(db(), table)
     # Query the row back and verify the upserted value landed. SQL JSON mode
-    # returns rows keyed by column name. An old server ignores the requested
-    # JSON format and answers with Arrow IPC bytes, so sql() returns {:ok, []} -
-    # only verify row content when JSON mode worked.
+    # returns rows keyed by column name.
     assert {:ok, rows} = MongrelDB.sql(db(), "SELECT amount FROM #{table} WHERE id = 1")
-
-    if rows != [] do
-      assert hd(rows)["amount"] == 99.0
-    end
+    assert hd(rows)["amount"] == 99.0
   end
 
   @tag :skip_without_server
@@ -125,15 +115,10 @@ defmodule MongrelDB.LiveTest do
 
     assert {:ok, 2} = MongrelDB.count(db(), table)
     # JSON mode makes SELECT return rows as JSON objects (column names as
-    # keys). Verify both rows come back with the right primary keys. An old
-    # server ignores the requested JSON format and answers with Arrow IPC bytes,
-    # so sql() returns {:ok, []} - only verify row content when JSON mode worked.
+    # keys). Verify both rows come back with the right primary keys.
     assert {:ok, selected} = MongrelDB.sql(db(), "SELECT id FROM #{table} ORDER BY id")
-
-    if selected != [] do
-      assert length(selected) == 2
-      assert Enum.map(selected, & &1["id"]) == [1, 2]
-    end
+    assert length(selected) == 2
+    assert Enum.map(selected, & &1["id"]) == [1, 2]
   end
 
   @tag :skip_without_server
@@ -174,16 +159,11 @@ defmodule MongrelDB.LiveTest do
 
     assert length(rows) == 2
     # Only rows with id 3 (amount 90) and 4 (amount 100) qualify. Confirm
-    # their exact PK values via SQL JSON mode (rows keyed by column name). An
-    # old server ignores the requested JSON format and answers with Arrow IPC
-    # bytes, so sql() returns {:ok, []} - only verify row content when JSON mode
-    # worked.
+    # their exact PK values via SQL JSON mode (rows keyed by column name).
     assert {:ok, selected} =
              MongrelDB.sql(db(), "SELECT id FROM #{table} WHERE amount >= 80.0 ORDER BY id")
 
-    if selected != [] do
-      assert Enum.map(selected, & &1["id"]) == [3, 4]
-    end
+    assert Enum.map(selected, & &1["id"]) == [3, 4]
   end
 
   @tag :skip_without_server
