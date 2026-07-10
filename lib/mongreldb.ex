@@ -302,8 +302,8 @@ defmodule MongrelDB do
       )
 
     case result do
-      {:ok, {{_http, status, _}, _headers, resp_body}} when status >= 200 and status < 300 ->
-        handle_success(status, resp_body)
+      {:ok, {{_http, status, _}, headers, resp_body}} when status >= 200 and status < 300 ->
+        handle_success(status, headers, resp_body)
 
       {:ok, {{_http, status, _}, _headers, resp_body}} ->
         {:error, status_to_exception(status, to_string(resp_body || ""))}
@@ -329,18 +329,51 @@ defmodule MongrelDB do
   end
 
   # Build a success response, enforcing a 256 MB body size cap.
-  defp handle_success(status, resp_body) do
-    body = to_string(resp_body || "")
+  #
+  # :httpc buffers the whole body before returning, so a true streaming cap is
+  # not possible without rewriting the transport. As an early guard we reject
+  # responses whose declared Content-Length already exceeds the cap, before we
+  # touch the body. The post-check on the materialized body remains as a
+  # belt-and-suspenders guard for chunked/missing Content-Length responses.
+  defp handle_success(status, headers, resp_body) do
     max_bytes = 256 * 1024 * 1024
 
-    if byte_size(body) > max_bytes do
-      {:error,
-       %QueryException{
-         message: "response body exceeds #{max_bytes} bytes (#{byte_size(body)} bytes)"
-       }}
-    else
-      {:ok, %MongrelDB.HTTPResponse{status: status, body: body}}
+    case content_length(headers) do
+      {:ok, len} when len > max_bytes ->
+        {:error,
+         %QueryException{
+           message:
+             "response body exceeds #{max_bytes} bytes (Content-Length: #{len})"
+         }}
+
+      _ ->
+        body = to_string(resp_body || "")
+
+        if byte_size(body) > max_bytes do
+          {:error,
+           %QueryException{
+             message: "response body exceeds #{max_bytes} bytes (#{byte_size(body)} bytes)"
+           }}
+        else
+          {:ok, %MongrelDB.HTTPResponse{status: status, body: body}}
+        end
     end
+  end
+
+  # :httpc returns headers as a list of {charlist_key, charlist_value} tuples.
+  # Find the Content-Length header (case-insensitive) and parse its integer
+  # value. Returns {:ok, integer} or :error when absent/invalid.
+  defp content_length(headers) do
+    Enum.reduce_while(headers, :error, fn {key, value}, _acc ->
+      if String.downcase(to_string(key)) == "content-length" do
+        case Integer.parse(to_string(value)) do
+          {len, _} -> {:halt, {:ok, len}}
+          :error -> {:halt, :error}
+        end
+      else
+        {:cont, :error}
+      end
+    end)
   end
 
   defp status_to_exception(status, body) do

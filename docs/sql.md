@@ -11,9 +11,10 @@ statement and returns the response.
 {:ok, _} = MongrelDB.sql(db, "CREATE TABLE archive AS SELECT * FROM orders WHERE amount > 500")
 ```
 
-The `/sql` endpoint may return Arrow IPC bytes for rich SELECTs. In that case
-`sql/2` returns `{:ok, []}`. For typed, JSON-shaped reads, prefer the native
-[query builder](queries.md).
+The client requests the JSON result format (`"format" => "json"`), so a
+SELECT returns its rows decoded into an Elixir data structure (a list of row
+maps keyed by column name). Statements that produce no rows (DDL/DML, or an
+empty result set) return `{:ok, []}`.
 
 ## DataFusion features
 
