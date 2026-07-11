@@ -11,6 +11,13 @@ defmodule MongrelDB.CreateTableWireTest do
 
   alias MongrelDB.JSON
 
+  test "static default matrix preserves JSON scalar types and literal now" do
+    Enum.each(["text", 3, true, nil, "now"], fn value ->
+      {:ok, encoded} = JSON.encode(%{"default_value" => value})
+      assert {:ok, %{"default_value" => ^value}} = JSON.decode(encoded)
+    end)
+  end
+
   setup do
     server = start_http_capture!()
     on_exit(fn -> stop_http_capture(server) end)
@@ -274,11 +281,4 @@ defmodule MongrelDB.CreateTableWireTest do
         )
     end
   end
-end
-
-test "static default matrix preserves JSON scalar types and literal now" do
-  Enum.each(["text", 3, true, nil, "now"], fn value ->
-    {:ok, encoded} = JSON.encode(%{"default_value" => value})
-    assert {:ok, %{"default_value" => ^value}} = JSON.decode(encoded)
-  end)
 end
