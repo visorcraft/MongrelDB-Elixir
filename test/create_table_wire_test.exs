@@ -11,7 +11,7 @@ defmodule MongrelDB.CreateTableWireTest do
 
   alias MongrelDB.JSON
 
-  setup_all do
+  setup do
     server = start_http_capture!()
     on_exit(fn -> stop_http_capture(server) end)
     {:ok, server: server}
@@ -19,18 +19,6 @@ defmodule MongrelDB.CreateTableWireTest do
 
   test "create_table forwards enum_variants and default_value on the column map",
        %{server: server} do
-    IO.puts("TEST port=#{server.port}")
-
-    # Verify the listener accepts raw TCP before exercising :httpc.
-    case :gen_tcp.connect(~c"127.0.0.1", server.port, [:binary, active: false]) do
-      {:ok, c} ->
-        :gen_tcp.close(c)
-        IO.puts("TEST raw connect OK")
-
-      err ->
-        IO.puts("TEST raw connect FAILED: #{inspect(err)}")
-    end
-
     db = MongrelDB.connect("http://127.0.0.1:#{server.port}")
 
     assert {:ok, 0} =
@@ -51,9 +39,18 @@ defmodule MongrelDB.CreateTableWireTest do
                  "enum_variants" => ["a", "b", "c"],
                  "default_value" => "a"
                }
-             ])
+             ], %{
+               "checks" => [
+                 %{
+                   "id" => 1,
+                   "name" => "known_status",
+                   "expr" => %{
+                     "Eq" => [%{"Col" => 2}, %{"Lit" => %{"Bytes" => "a"}}]
+                   }
+                 }
+               ]
+             })
 
-    drain_diagnostics()
     body = receive_capture()
     {:ok, decoded} = JSON.decode(body)
 
@@ -65,11 +62,14 @@ defmodule MongrelDB.CreateTableWireTest do
     # The status column carries the new keys verbatim.
     assert status_col["enum_variants"] == ["a", "b", "c"]
     assert status_col["default_value"] == "a"
+    assert get_in(decoded, ["constraints", "checks", Access.at(0), "name"]) ==
+             "known_status"
 
     # Wire-shape guarantee: the keys must appear in the exact textual form
     # the daemon's Kit API documents. Bypass Elixir map literal printing.
     assert body =~ ~s("enum_variants":["a","b","c"])
     assert body =~ ~s("default_value":"a")
+    assert body =~ ~s("constraints":{"checks":[)
 
     # The id column is NOT polluted by the new keys.
     refute Map.has_key?(id_col, "enum_variants")
@@ -98,7 +98,6 @@ defmodule MongrelDB.CreateTableWireTest do
                }
              ])
 
-    drain_diagnostics()
     assert_receive {:http_capture, body}, 1_000
     {:ok, decoded} = JSON.decode(body)
 
@@ -187,7 +186,7 @@ defmodule MongrelDB.CreateTableWireTest do
       {:ok, head} ->
         [head_only, body_so_far] = String.split(head, "\r\n\r\n", parts: 2)
         content_length = content_length_from_headers(head_only)
-        read_body(sock, content_length, body_so_far)
+        read_body(sock, max(content_length - byte_size(body_so_far), 0), body_so_far)
 
       {:error, _} = err ->
         err
@@ -198,7 +197,9 @@ defmodule MongrelDB.CreateTableWireTest do
 
   defp read_body(sock, remaining, acc) do
     case :gen_tcp.recv(sock, remaining, 5_000) do
-      {:ok, chunk} -> {:ok, acc <> chunk}
+      {:ok, chunk} ->
+        read_body(sock, max(remaining - byte_size(chunk), 0), acc <> chunk)
+
       {:error, _} = err -> err
     end
   end
@@ -215,7 +216,7 @@ defmodule MongrelDB.CreateTableWireTest do
       {:ok, chunk} ->
         acc = acc <> chunk
 
-        if String.ends_with?(acc, terminator) do
+        if String.contains?(acc, terminator) do
           {:ok, acc}
         else
           recv_until(sock, terminator, acc, iter + 1, max_iters)
@@ -249,16 +250,6 @@ defmodule MongrelDB.CreateTableWireTest do
         "Connection: close\r\n\r\n" <> response_body
 
     :gen_tcp.send(sock, response)
-  end
-
-  defp drain_diagnostics do
-    receive do
-      msg ->
-        IO.inspect(msg, label: "diag")
-        drain_diagnostics()
-    after
-      50 -> :ok
-    end
   end
 
   defp receive_capture do

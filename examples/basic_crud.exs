@@ -34,7 +34,15 @@ try do
         "enum_variants" => ["active", "paused", "archived"],
         "default_value" => "active"
       }
-    ])
+    ], %{
+      "checks" => [
+        %{
+          "id" => 1,
+          "name" => "amount_nonneg",
+          "expr" => %{"Ge" => [%{"Col" => 3}, %{"Lit" => %{"Float64" => 0.0}}]}
+        }
+      ]
+    })
 
   # MongrelDB.put/4 returns {:ok, map()}, not :ok.
   {:ok, _} = MongrelDB.put(db, table, %{1 => 1, 2 => "first", 3 => 10.0, 4 => "active"})

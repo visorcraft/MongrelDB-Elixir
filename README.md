@@ -208,8 +208,14 @@ MongrelDB.create_table(db, "tasks", [
 ])
 ```
 
-Regex `CHECK` constraints are also forwarded the same way (no client-side
-validation; the engine enforces them at commit time).
+Table checks use `create_table/4`; the fourth argument is the native
+`constraints` map and is enforced by the engine at commit time.
+
+```elixir
+checks = %{"checks" => [%{"id" => 1, "name" => "amount_nonneg",
+  "expr" => %{"Ge" => [%{"Col" => 3}, %{"Lit" => %{"Float64" => 0.0}}]}}]}
+MongrelDB.create_table(db, "orders", columns, checks)
+```
 
 ## User and role management
 
@@ -262,7 +268,8 @@ end
 | `MongrelDB.connect(url, opts)` | Connect to a daemon |
 | `MongrelDB.health(db)` | Check daemon health |
 | `MongrelDB.table_names(db)` | List table names |
-| `MongrelDB.create_table(db, name, columns)` | Create a table, returns table id |
+| `MongrelDB.create_table(db, name, columns)` | Create a table, returns table id; column maps may include enum/default fields |
+| `MongrelDB.create_table(db, name, columns, constraints)` | Create a table with native `constraints` JSON (including CHECKs) |
 | `MongrelDB.drop_table(db, name)` | Drop a table |
 | `MongrelDB.count(db, table)` | Row count |
 | `MongrelDB.put(db, table, cells, opts)` | Insert a row |

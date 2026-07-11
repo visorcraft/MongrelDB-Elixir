@@ -111,8 +111,18 @@ defmodule MongrelDB do
   """
   @spec create_table(t(), String.t(), [map()]) :: {:ok, non_neg_integer()} | {:error, term()}
   def create_table(db, name, columns) do
+    create_table(db, name, columns, nil)
+  end
+
+  @doc "Create a table with the daemon's native constraints block."
+  @spec create_table(t(), String.t(), [map()], map()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  def create_table(db, name, columns, constraints) do
+    request = %{"name" => name, "columns" => columns}
+    request = if constraints, do: Map.put(request, "constraints", constraints), else: request
+
     with {:ok, body} <-
-           post_json(db, "/kit/create_table", %{"name" => name, "columns" => columns}) do
+           post_json(db, "/kit/create_table", request) do
       {:ok, Map.get(body, "table_id", 0)}
     end
   end
