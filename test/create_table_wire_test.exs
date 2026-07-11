@@ -245,19 +245,17 @@ defmodule MongrelDB.CreateTableWireTest do
     end
   end
 
-  # credo:disable-for-next-line Credo.Check.Refactor.Nesting
   defp content_length_from_headers(head) do
     head
     |> String.split("\r\n")
-    |> Enum.find_value(0, fn line ->
-      case String.split(line, ": ", parts: 2) do
-        [k, v] ->
-          if String.downcase(k) == "content-length", do: String.to_integer(v), else: nil
+    |> Enum.find_value(0, &content_length/1)
+  end
 
-        _ ->
-          nil
-      end
-    end)
+  defp content_length(line) do
+    case String.split(line, ": ", parts: 2) do
+      [k, v] when k in ["Content-Length", "content-length"] -> String.to_integer(v)
+      _ -> nil
+    end
   end
 
   defp send_200(sock) do

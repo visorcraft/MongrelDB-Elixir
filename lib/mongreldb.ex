@@ -404,14 +404,17 @@ defmodule MongrelDB do
     {message, error_code, op_index} = parse_error_envelope(body)
     message = if message == "", do: "Server error (#{status})", else: message
 
-    case status do
-      s when s in [401, 403] ->
-        %AuthException{message: message}
-
-      404 ->
+    case {status, message} do
+      {_, "not found:" <> _} ->
         %NotFoundException{message: message}
 
-      409 ->
+      {s, _} when s in [401, 403] ->
+        %AuthException{message: message}
+
+      {404, _} ->
+        %NotFoundException{message: message}
+
+      {409, _} ->
         %ConstraintException{
           message: message,
           error_code: error_code,
