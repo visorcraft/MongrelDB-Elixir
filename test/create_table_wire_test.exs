@@ -245,6 +245,7 @@ defmodule MongrelDB.CreateTableWireTest do
     end
   end
 
+  # credo:disable-for-next-line Credo.Check.Refactor.Nesting
   defp content_length_from_headers(head) do
     head
     |> String.split("\r\n")
