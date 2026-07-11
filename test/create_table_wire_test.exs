@@ -22,34 +22,40 @@ defmodule MongrelDB.CreateTableWireTest do
     db = MongrelDB.connect("http://127.0.0.1:#{server.port}")
 
     assert {:ok, 0} =
-             MongrelDB.create_table(db, "orders", [
-               %{
-                 "id" => 1,
-                 "name" => "id",
-                 "ty" => "int64",
-                 "primary_key" => true,
-                 "nullable" => false
-               },
-               %{
-                 "id" => 2,
-                 "name" => "status",
-                 "ty" => "varchar",
-                 "primary_key" => false,
-                 "nullable" => false,
-                 "enum_variants" => ["a", "b", "c"],
-                 "default_value" => "a"
-               }
-             ], %{
-               "checks" => [
+             MongrelDB.create_table(
+               db,
+               "orders",
+               [
                  %{
                    "id" => 1,
-                   "name" => "known_status",
-                   "expr" => %{
-                     "Eq" => [%{"Col" => 2}, %{"Lit" => %{"Bytes" => "a"}}]
-                   }
+                   "name" => "id",
+                   "ty" => "int64",
+                   "primary_key" => true,
+                   "nullable" => false
+                 },
+                 %{
+                   "id" => 2,
+                   "name" => "status",
+                   "ty" => "varchar",
+                   "primary_key" => false,
+                   "nullable" => false,
+                   "enum_variants" => ["a", "b", "c"],
+                   "default_value" => 3,
+                   "default_expr" => "uuid"
                  }
-               ]
-             })
+               ],
+               %{
+                 "checks" => [
+                   %{
+                     "id" => 1,
+                     "name" => "known_status",
+                     "expr" => %{
+                       "Eq" => [%{"Col" => 2}, %{"Lit" => %{"Bytes" => "a"}}]
+                     }
+                   }
+                 ]
+               }
+             )
 
     body = receive_capture()
     {:ok, decoded} = JSON.decode(body)
@@ -61,14 +67,17 @@ defmodule MongrelDB.CreateTableWireTest do
 
     # The status column carries the new keys verbatim.
     assert status_col["enum_variants"] == ["a", "b", "c"]
-    assert status_col["default_value"] == "a"
+    assert status_col["default_value"] == 3
+    assert status_col["default_expr"] == "uuid"
+
     assert get_in(decoded, ["constraints", "checks", Access.at(0), "name"]) ==
              "known_status"
 
     # Wire-shape guarantee: the keys must appear in the exact textual form
     # the daemon's Kit API documents. Bypass Elixir map literal printing.
     assert body =~ ~s("enum_variants":["a","b","c"])
-    assert body =~ ~s("default_value":"a")
+    assert body =~ ~s("default_value":3)
+    assert body =~ ~s("default_expr":"uuid")
     assert body =~ ~s("constraints":{"checks":[)
 
     # The id column is NOT polluted by the new keys.
@@ -166,6 +175,7 @@ defmodule MongrelDB.CreateTableWireTest do
 
   defp serve(sock, parent) do
     send(parent, {:debug_serve_called, self()})
+
     case read_request(sock) do
       {:ok, body} ->
         send(parent, {:http_capture, body})
@@ -200,7 +210,8 @@ defmodule MongrelDB.CreateTableWireTest do
       {:ok, chunk} ->
         read_body(sock, max(remaining - byte_size(chunk), 0), acc <> chunk)
 
-      {:error, _} = err -> err
+      {:error, _} = err ->
+        err
     end
   end
 
@@ -243,6 +254,7 @@ defmodule MongrelDB.CreateTableWireTest do
 
   defp send_200(sock) do
     response_body = ~s({"table_id":0})
+
     response =
       "HTTP/1.1 200 OK\r\n" <>
         "Content-Type: application/json\r\n" <>
@@ -256,7 +268,10 @@ defmodule MongrelDB.CreateTableWireTest do
     receive do
       {:http_capture, body} -> body
     after
-      2_000 -> flunk("no http_capture message received; diag: #{inspect(:erlang.process_info(self(), :messages))}")
+      2_000 ->
+        flunk(
+          "no http_capture message received; diag: #{inspect(:erlang.process_info(self(), :messages))}"
+        )
     end
   end
 end

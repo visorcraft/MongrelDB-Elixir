@@ -192,7 +192,8 @@ end
 ## Schema constraints
 
 Columns can carry enum variants and a default value on the descriptor itself.
-`default_value` is the server-side alias for `default_expr`. The Elixir client
+`default_value` preserves a static JSON scalar; `default_expr` selects the
+dynamic `"now"` or `"uuid"` default. The Elixir client
 forwards the map keys you supply verbatim.
 
 ```elixir
