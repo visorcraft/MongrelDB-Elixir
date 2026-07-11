@@ -241,6 +241,11 @@ defmodule MongrelDB do
   @spec compact(t()) :: {:ok, map()} | {:error, term()}
   def compact(db), do: post_json(db, "/compact", %{})
 
+  def history_retention(db), do: get_json(db, "/history/retention")
+
+  def set_history_retention_epochs(db, epochs) when is_integer(epochs) and epochs >= 0,
+    do: put_json(db, "/history/retention", %{"history_retention_epochs" => epochs})
+
   @doc "Begin a batch transaction."
   @spec begin_transaction(t()) :: Transaction.t()
   def begin_transaction(db), do: %Transaction{db: db}
@@ -259,6 +264,8 @@ defmodule MongrelDB do
     request(db, :post, path, encoded)
   end
 
+  defp http_put(db, path, body), do: request(db, :put, path, encode_json!(body))
+
   @doc false
   def delete(db, path) do
     request(db, :delete, path, nil)
@@ -274,6 +281,10 @@ defmodule MongrelDB do
     with {:ok, resp} <- post(db, path, body) do
       {:ok, decode_json!(resp.body)}
     end
+  end
+
+  defp put_json(db, path, body) do
+    with {:ok, resp} <- http_put(db, path, body), do: {:ok, decode_json!(resp.body)}
   end
 
   # Core request helper. Uses :inets :httpc and maps status codes to typed

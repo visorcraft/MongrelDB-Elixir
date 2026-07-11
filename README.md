@@ -29,6 +29,9 @@ def deps do
 end
 ```
 
+History retention: `MongrelDB.history_retention/1` and
+`MongrelDB.set_history_retention_epochs/2`.
+
 ## Requirements
 
 - **Elixir 1.14 or newer** (with a matching OTP 25+)
