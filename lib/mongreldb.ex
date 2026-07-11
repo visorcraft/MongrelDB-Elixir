@@ -510,13 +510,13 @@ defmodule MongrelDB do
   defp extract_retention_integer(body, key) when is_map(body) do
     expected = ["history_retention_epochs", "earliest_retained_epoch"]
 
-    with true <-
-           Enum.all?(expected, &Map.has_key?(body, &1)) ||
-             {:error, unexpected_retention_body(body)},
-         {:ok, value} <- Map.fetch(body, key),
-         true <-
-           (is_integer(value) and value >= 0) || {:error, invalid_retention_value(key, value)} do
-      {:ok, value}
+    if MapSet.equal?(MapSet.new(Map.keys(body)), MapSet.new(expected)) do
+      case Map.fetch!(body, key) do
+        value when is_integer(value) and value >= 0 -> {:ok, value}
+        value -> {:error, invalid_retention_value(key, value)}
+      end
+    else
+      {:error, unexpected_retention_body(body)}
     end
   end
 

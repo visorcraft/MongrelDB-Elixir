@@ -221,6 +221,9 @@ defmodule MongrelDB.LiveTest do
              find_epoch_with_value(db(), table, 1, "first", initial_floor..(initial_floor + 50))
 
     assert is_integer(old_epoch) and old_epoch >= initial_floor
+
+    # Restore a sane default for any shared test server.
+    assert {:ok, _} = MongrelDB.set_history_retention_epochs(db(), 1024)
   end
 
   @tag :skip_without_server
@@ -266,6 +269,9 @@ defmodule MongrelDB.LiveTest do
     # The floor never moves backward.
     assert {:ok, final_floor} = MongrelDB.earliest_retained_epoch(db())
     assert final_floor >= new_floor
+
+    # Restore a sane default for any shared test server.
+    assert {:ok, _} = MongrelDB.set_history_retention_epochs(db(), 1024)
   end
 
   defp columns do

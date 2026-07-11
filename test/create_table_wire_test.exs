@@ -204,6 +204,23 @@ defmodule MongrelDB.CreateTableWireTest do
              MongrelDB.set_history_retention_epochs(db, 5)
   end
 
+  test "history retention rejects malformed 2xx responses" do
+    for body <- [
+          ~s({"unexpected": 1}),
+          ~s({"history_retention_epochs": -1, "earliest_retained_epoch": 0}),
+          ~s({"history_retention_epochs": "100", "earliest_retained_epoch": 0}),
+          ~s({"history_retention_epochs": 100}),
+          ~s({"history_retention_epochs": 100, "earliest_retained_epoch": 0, "extra": true})
+        ] do
+      server = start_history_capture!(200, body)
+      on_exit(fn -> stop_http_capture(server) end)
+      db = MongrelDB.connect("http://127.0.0.1:#{server.port}")
+
+      assert {:error, %MongrelDB.QueryException{}} =
+               MongrelDB.history_retention_epochs(db)
+    end
+  end
+
   # -- helpers ---------------------------------------------------------------
 
   # Boots a single-shot HTTP listener on 127.0.0.1:<random> that captures the
