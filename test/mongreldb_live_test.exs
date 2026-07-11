@@ -203,6 +203,71 @@ defmodule MongrelDB.LiveTest do
     assert {:ok, 1} = MongrelDB.count(db(), table)
   end
 
+  @tag :skip_without_server
+  test "history retention keeps older epochs readable via AS OF EPOCH" do
+    skip_unless_reachable!()
+    table = unique_name("ex_history")
+
+    assert {:ok, _} = MongrelDB.set_history_retention_epochs(db(), 1000)
+    assert {:ok, 1000} = MongrelDB.history_retention_epochs(db())
+    assert {:ok, initial_floor} = MongrelDB.earliest_retained_epoch(db())
+
+    assert {:ok, _} = MongrelDB.create_table(db(), table, history_columns())
+    assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 1, 2 => "first"})
+    assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 1, 2 => "second"})
+
+    # Probe epochs starting from the floor to find one that still sees "first".
+    assert {:ok, old_epoch} =
+             find_epoch_with_value(db(), table, 1, "first", initial_floor..(initial_floor + 50))
+
+    assert is_integer(old_epoch) and old_epoch >= initial_floor
+  end
+
+  @tag :skip_without_server
+  test "lowering retention advances floor and dropped epochs do not restore" do
+    skip_unless_reachable!()
+    table = unique_name("ex_history_drop")
+
+    assert {:ok, _} = MongrelDB.set_history_retention_epochs(db(), 1000)
+    assert {:ok, initial_floor} = MongrelDB.earliest_retained_epoch(db())
+
+    assert {:ok, _} = MongrelDB.create_table(db(), table, history_columns())
+    assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 1, 2 => "first"})
+    assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 1, 2 => "second"})
+
+    assert {:ok, old_epoch} =
+             find_epoch_with_value(db(), table, 1, "first", initial_floor..(initial_floor + 50))
+
+    # Narrow the window and advance the current epoch so pruning happens.
+    assert {:ok, _} = MongrelDB.set_history_retention_epochs(db(), 1)
+    assert {:ok, 1} = MongrelDB.history_retention_epochs(db())
+    assert {:ok, _} = MongrelDB.put(db(), table, %{1 => 1, 2 => "third"})
+
+    assert {:ok, new_floor} = MongrelDB.earliest_retained_epoch(db())
+    assert new_floor > initial_floor
+
+    # The previously readable epoch is now below the floor and errors out.
+    assert {:error, %MongrelDB.QueryException{}} =
+             MongrelDB.sql(
+               db(),
+               "SELECT label FROM #{table} AS OF EPOCH #{old_epoch} WHERE id = 1"
+             )
+
+    # Re-expanding the window cannot restore already-pruned epochs.
+    assert {:ok, _} = MongrelDB.set_history_retention_epochs(db(), 1000)
+    assert {:ok, 1000} = MongrelDB.history_retention_epochs(db())
+
+    assert {:error, %MongrelDB.QueryException{}} =
+             MongrelDB.sql(
+               db(),
+               "SELECT label FROM #{table} AS OF EPOCH #{old_epoch} WHERE id = 1"
+             )
+
+    # The floor never moves backward.
+    assert {:ok, final_floor} = MongrelDB.earliest_retained_epoch(db())
+    assert final_floor >= new_floor
+  end
+
   defp columns do
     [
       %{"id" => 1, "name" => "id", "ty" => "int64", "primary_key" => true, "nullable" => false},
@@ -221,6 +286,30 @@ defmodule MongrelDB.LiveTest do
         "nullable" => false
       }
     ]
+  end
+
+  defp history_columns do
+    [
+      %{"id" => 1, "name" => "id", "ty" => "int64", "primary_key" => true, "nullable" => false},
+      %{
+        "id" => 2,
+        "name" => "label",
+        "ty" => "varchar",
+        "primary_key" => false,
+        "nullable" => false
+      }
+    ]
+  end
+
+  defp find_epoch_with_value(db, table, id, value, range) do
+    Enum.find_value(range, fn epoch ->
+      sql = "SELECT label FROM #{table} AS OF EPOCH #{epoch} WHERE id = #{id}"
+
+      case MongrelDB.sql(db, sql) do
+        {:ok, [%{"label" => ^value}]} -> {:ok, epoch}
+        _ -> nil
+      end
+    end) || flunk("could not find epoch with label=#{value} in range #{inspect(range)}")
   end
 
   defp skip_unless_reachable! do

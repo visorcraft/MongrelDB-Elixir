@@ -241,10 +241,41 @@ defmodule MongrelDB do
   @spec compact(t()) :: {:ok, map()} | {:error, term()}
   def compact(db), do: post_json(db, "/compact", %{})
 
+  @doc "Return the full history-retention response map from the daemon."
+  @spec history_retention(t()) :: {:ok, map()} | {:error, term()}
   def history_retention(db), do: get_json(db, "/history/retention")
 
-  def set_history_retention_epochs(db, epochs) when is_integer(epochs) and epochs >= 0,
-    do: put_json(db, "/history/retention", %{"history_retention_epochs" => epochs})
+  @doc "Return the configured history retention window in epochs."
+  @spec history_retention_epochs(t()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def history_retention_epochs(db) do
+    with {:ok, body} <- get_json(db, "/history/retention") do
+      extract_retention_integer(body, "history_retention_epochs")
+    end
+  end
+
+  @doc "Return the earliest epoch that is still readable via `AS OF EPOCH`."
+  @spec earliest_retained_epoch(t()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def earliest_retained_epoch(db) do
+    with {:ok, body} <- get_json(db, "/history/retention") do
+      extract_retention_integer(body, "earliest_retained_epoch")
+    end
+  end
+
+  @doc """
+  Set the history retention window to `epochs` epochs.
+
+  Returns `{:ok, history_retention_epochs}` on success, where the value is the
+  daemon-confirmed retention window. Validates the response shape and integer
+  values; non-2xx responses are mapped through the usual typed exceptions.
+  """
+  @spec set_history_retention_epochs(t(), non_neg_integer()) ::
+          {:ok, non_neg_integer()} | {:error, term()}
+  def set_history_retention_epochs(db, epochs) when is_integer(epochs) and epochs >= 0 do
+    with {:ok, body} <-
+           put_json(db, "/history/retention", %{"history_retention_epochs" => epochs}) do
+      extract_retention_integer(body, "history_retention_epochs")
+    end
+  end
 
   @doc "Begin a batch transaction."
   @spec begin_transaction(t()) :: Transaction.t()
@@ -472,6 +503,38 @@ defmodule MongrelDB do
 
   defp first_result(%{"results" => [first | _]}) when is_map(first), do: first
   defp first_result(_), do: %{}
+
+  # The frozen /history/retention contract returns exactly these two integer
+  # keys. Reject unexpected shapes so callers cannot be silently confused by a
+  # daemon that changed its response format.
+  defp extract_retention_integer(body, key) when is_map(body) do
+    expected = ["history_retention_epochs", "earliest_retained_epoch"]
+
+    with true <-
+           Enum.all?(expected, &Map.has_key?(body, &1)) ||
+             {:error, unexpected_retention_body(body)},
+         {:ok, value} <- Map.fetch(body, key),
+         true <-
+           (is_integer(value) and value >= 0) || {:error, invalid_retention_value(key, value)} do
+      {:ok, value}
+    end
+  end
+
+  defp extract_retention_integer(body, _key), do: {:error, unexpected_retention_body(body)}
+
+  defp unexpected_retention_body(body) do
+    %QueryException{
+      message: "unexpected /history/retention response: #{inspect(body)}",
+      reason: :unexpected_retention_shape
+    }
+  end
+
+  defp invalid_retention_value(key, value) do
+    %QueryException{
+      message: "expected non-negative integer for #{key}, got: #{inspect(value)}",
+      reason: :invalid_retention_value
+    }
+  end
 
   defp maybe_add_idempotency(payload, nil), do: payload
 

@@ -29,8 +29,9 @@ def deps do
 end
 ```
 
-History retention: `MongrelDB.history_retention/1` and
-`MongrelDB.set_history_retention_epochs/2`.
+History retention: `MongrelDB.history_retention_epochs/1`,
+`MongrelDB.earliest_retained_epoch/1`, `MongrelDB.set_history_retention_epochs/2`,
+and the raw `MongrelDB.history_retention/1`.
 
 ## Requirements
 
@@ -195,9 +196,11 @@ end
 ## Schema constraints
 
 Columns can carry enum variants and a default value on the descriptor itself.
-`default_value` preserves a static JSON scalar; `default_expr` selects the
-dynamic `"now"` or `"uuid"` default. The Elixir client
-forwards the map keys you supply verbatim.
+`default_value` preserves a static JSON scalar (string, number, boolean, or
+explicit `null`); `default_expr` selects the dynamic `"now"` or `"uuid"`
+default. Literal `"now"` in `default_value` is stored as a string, while
+`default_expr: "now"` tells the engine to evaluate the current timestamp. The
+Elixir client forwards the map keys you supply verbatim.
 
 ```elixir
 MongrelDB.create_table(db, "tasks", [
@@ -208,7 +211,12 @@ MongrelDB.create_table(db, "tasks", [
     "ty" => "enum",
     "enum_variants" => ["active", "paused", "archived"],
     "default_value" => "active"
-  }
+  },
+  %{"id" => 3, "name" => "count",  "ty" => "int64",  "default_value" => 7},
+  %{"id" => 4, "name" => "live",   "ty" => "bool",   "default_value" => true},
+  %{"id" => 5, "name" => "missing","ty" => "varchar","default_value" => nil},
+  %{"id" => 6, "name" => "literal_now","ty" => "varchar","default_value" => "now"},
+  %{"id" => 7, "name" => "created_at","ty" => "timestamp","default_expr" => "now"}
 ])
 ```
 
@@ -285,6 +293,10 @@ end
 | `MongrelDB.schema(db)` | Full schema catalog |
 | `MongrelDB.schema_for(db, table)` | Single table schema |
 | `MongrelDB.compact(db)` | Compact all tables |
+| `MongrelDB.history_retention_epochs(db)` | Current history retention window in epochs |
+| `MongrelDB.earliest_retained_epoch(db)` | Earliest readable epoch for `AS OF EPOCH` |
+| `MongrelDB.set_history_retention_epochs(db, epochs)` | Set the history retention window |
+| `MongrelDB.history_retention(db)` | Raw `/history/retention` response map |
 | `MongrelDB.begin_transaction(db)` | Start a batch |
 
 ### `QueryBuilder` module

@@ -62,21 +62,47 @@ MongrelDB.create_table(db, "orders", [
 
 ### Schema constraints
 
-Columns can carry `enum_variants` and a `default_value` on the descriptor
-itself; the server also accepts `default_expr` as an alias for `default_value`.
-The client forwards the map keys you supply verbatim.
+Columns can carry `enum_variants`, `default_value`, and `default_expr` on the
+descriptor itself. `default_value` stores a static JSON scalar; `default_expr`
+is a separate key that selects a dynamic default such as `"now"` or `"uuid"`.
+They are not aliases — literal `"now"` in `default_value` is a string, while
+`default_expr: "now"` asks the engine to evaluate the current timestamp.
 
 ```elixir
-%{
-  "id" => 4,
-  "name" => "status",
-  "ty" => "enum",
-  "enum_variants" => ["active", "paused", "archived"],
-  "default_value" => "active"
-}
+[
+  %{"id" => 1, "name" => "id",      "ty" => "int64",   "primary_key" => true,  "nullable" => false},
+  %{"id" => 2, "name" => "status",  "ty" => "enum",    "enum_variants" => ["active", "paused", "archived"], "default_value" => "active"},
+  %{"id" => 3, "name" => "count",   "ty" => "int64",   "default_value" => 7},
+  %{"id" => 4, "name" => "live",    "ty" => "bool",    "default_value" => true},
+  %{"id" => 5, "name" => "missing", "ty" => "varchar", "default_value" => nil},
+  %{"id" => 6, "name" => "literal_now", "ty" => "varchar", "default_value" => "now"},
+  %{"id" => 7, "name" => "created_at",  "ty" => "timestamp", "default_expr" => "now"}
+]
 ```
 
 Cells are passed as a map from column id to value.
+
+## History retention
+
+The daemon keeps a window of recent epochs so you can read historical snapshots
+with SQL `AS OF EPOCH`. `history_retention_epochs` is the configured window
+size; `earliest_retained_epoch` is the oldest epoch still available.
+
+```elixir
+# Set a wide window before doing time-travel reads.
+{:ok, 1000} = MongrelDB.set_history_retention_epochs(db, 1000)
+
+# Read the current settings.
+{:ok, retention} = MongrelDB.history_retention_epochs(db)
+{:ok, floor} = MongrelDB.earliest_retained_epoch(db)
+
+# Query a past snapshot.
+{:ok, rows} = MongrelDB.sql(db, "SELECT * FROM orders AS OF EPOCH #{floor}")
+```
+
+Lowering `history_retention_epochs` and writing more data advances
+`earliest_retained_epoch`. Expanding the window later does not restore epochs
+that have already been pruned.
 
 ## Run a query
 

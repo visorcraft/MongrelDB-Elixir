@@ -11,11 +11,56 @@ defmodule MongrelDB.CreateTableWireTest do
 
   alias MongrelDB.JSON
 
-  test "static default matrix preserves JSON scalar types and literal now" do
-    Enum.each(["text", 3, true, nil, "now"], fn value ->
-      {:ok, encoded} = JSON.encode(%{"default_value" => value})
-      assert {:ok, %{"default_value" => ^value}} = JSON.decode(encoded)
-    end)
+  test "static default matrix preserves JSON scalar types and literal now", %{server: server} do
+    db = MongrelDB.connect("http://127.0.0.1:#{server.port}")
+
+    columns =
+      [
+        {"draft_col", %{"default_value" => "draft"}},
+        {"seven_col", %{"default_value" => 7}},
+        {"true_col", %{"default_value" => true}},
+        {"nil_col", %{"default_value" => nil}},
+        {"now_literal_col", %{"default_value" => "now"}},
+        {"now_expr_col", %{"default_expr" => "now"}}
+      ]
+      |> Enum.with_index(1)
+      |> Enum.map(fn {{name, extra}, id} ->
+        Map.merge(
+          %{
+            "id" => id,
+            "name" => name,
+            "ty" => "varchar",
+            "primary_key" => false,
+            "nullable" => false
+          },
+          extra
+        )
+      end)
+
+    assert {:ok, 0} = MongrelDB.create_table(db, "defaults_matrix", columns)
+
+    body = receive_capture()
+    {:ok, decoded} = JSON.decode(body)
+    cols = decoded["columns"]
+
+    # Literal default_values preserve their JSON scalar type through the wire.
+    assert col_by_name(cols, "draft_col")["default_value"] === "draft"
+    assert col_by_name(cols, "seven_col")["default_value"] === 7
+    assert col_by_name(cols, "true_col")["default_value"] === true
+    assert col_by_name(cols, "nil_col")["default_value"] === nil
+    assert col_by_name(cols, "now_literal_col")["default_value"] === "now"
+
+    # default_expr is a separate key and never collapses into default_value.
+    assert col_by_name(cols, "now_expr_col")["default_expr"] === "now"
+    refute Map.has_key?(col_by_name(cols, "now_expr_col"), "default_value")
+
+    # Wire-shape guarantee: the keys and JSON types survive unchanged.
+    assert body =~ ~s("default_value":"draft")
+    assert body =~ ~s("default_value":7)
+    assert body =~ ~s("default_value":true)
+    assert body =~ ~s("default_value":null)
+    assert body =~ ~s("default_value":"now")
+    assert body =~ ~s("default_expr":"now")
   end
 
   setup do
@@ -129,6 +174,36 @@ defmodule MongrelDB.CreateTableWireTest do
     refute body =~ "default_value"
   end
 
+  test "history retention uses exact method, path, and body shape" do
+    server = start_history_capture!()
+    on_exit(fn -> stop_http_capture(server) end)
+    db = MongrelDB.connect("http://127.0.0.1:#{server.port}")
+
+    assert {:ok, 10} = MongrelDB.history_retention_epochs(db)
+
+    assert_receive {:history_capture, "GET", "/history/retention", ""}, 1_000
+
+    assert {:ok, 3} = MongrelDB.earliest_retained_epoch(db)
+    assert_receive {:history_capture, "GET", "/history/retention", ""}, 1_000
+
+    assert {:ok, 20} = MongrelDB.set_history_retention_epochs(db, 20)
+
+    assert_receive {:history_capture, "PUT", "/history/retention", body}, 1_000
+    assert {:ok, %{"history_retention_epochs" => 20}} = JSON.decode(body)
+  end
+
+  test "history retention propagates 403 as AuthException" do
+    server = start_history_capture!(403, ~s({"error":{"message":"forbidden"}}))
+    on_exit(fn -> stop_http_capture(server) end)
+    db = MongrelDB.connect("http://127.0.0.1:#{server.port}")
+
+    assert {:error, %MongrelDB.AuthException{}} = MongrelDB.history_retention_epochs(db)
+    assert {:error, %MongrelDB.AuthException{}} = MongrelDB.earliest_retained_epoch(db)
+
+    assert {:error, %MongrelDB.AuthException{}} =
+             MongrelDB.set_history_retention_epochs(db, 5)
+  end
+
   # -- helpers ---------------------------------------------------------------
 
   # Boots a single-shot HTTP listener on 127.0.0.1:<random> that captures the
@@ -184,9 +259,9 @@ defmodule MongrelDB.CreateTableWireTest do
     send(parent, {:debug_serve_called, self()})
 
     case read_request(sock) do
-      {:ok, body} ->
+      {:ok, _method, _path, body} ->
         send(parent, {:http_capture, body})
-        _ = send_200(sock)
+        _ = send_response(sock, 200, ~s({"table_id":0}))
 
       {:error, reason} ->
         send(parent, {:http_capture_error, reason})
@@ -197,13 +272,20 @@ defmodule MongrelDB.CreateTableWireTest do
 
   # Reads the HTTP request line, headers, and body off the socket. Robust to
   # partial reads by accumulating until both the header terminator and the
-  # full Content-Length payload are in hand.
+  # full Content-Length payload are in hand. Returns {method, path, body} so
+  # path- and method-sensitive tests can assert on the wire shape.
   defp read_request(sock) do
     case recv_until(sock, "\r\n\r\n", 16) do
       {:ok, head} ->
+        [request_line | _] = String.split(head, "\r\n", parts: 2)
+        [method, path, _version] = String.split(request_line, " ", parts: 3)
         [head_only, body_so_far] = String.split(head, "\r\n\r\n", parts: 2)
         content_length = content_length_from_headers(head_only)
-        read_body(sock, max(content_length - byte_size(body_so_far), 0), body_so_far)
+
+        case read_body(sock, max(content_length - byte_size(body_so_far), 0), body_so_far) do
+          {:ok, body} -> {:ok, method, path, body}
+          {:error, _} = err -> err
+        end
 
       {:error, _} = err ->
         err
@@ -258,17 +340,86 @@ defmodule MongrelDB.CreateTableWireTest do
     end
   end
 
-  defp send_200(sock) do
-    response_body = ~s({"table_id":0})
+  defp send_response(sock, status, body) do
+    status_line =
+      case status do
+        200 -> "HTTP/1.1 200 OK"
+        403 -> "HTTP/1.1 403 Forbidden"
+        _ -> "HTTP/1.1 #{status}"
+      end
 
     response =
-      "HTTP/1.1 200 OK\r\n" <>
+      status_line <>
+        "\r\n" <>
         "Content-Type: application/json\r\n" <>
-        "Content-Length: #{byte_size(response_body)}\r\n" <>
-        "Connection: close\r\n\r\n" <> response_body
+        "Content-Length: #{byte_size(body)}\r\n" <>
+        "Connection: close\r\n\r\n" <> body
 
     :gen_tcp.send(sock, response)
   end
+
+  # Boots a tiny HTTP listener that mimics the daemon's /history/retention
+  # endpoints. Captures {method, path, body} as :history_capture messages so
+  # the retention tests can assert exact wire shape without a running server.
+  defp start_history_capture!(
+         status \\ 200,
+         body \\ ~s({"history_retention_epochs":10,"earliest_retained_epoch":3})
+       ) do
+    {:ok, lsock} =
+      :gen_tcp.listen(0, [
+        :binary,
+        active: false,
+        reuseaddr: true,
+        packet: :raw,
+        ip: {127, 0, 0, 1}
+      ])
+
+    {:ok, port} = :inet.port(lsock)
+    parent = self()
+    pid = spawn_link(fn -> history_accept_loop(lsock, parent, status, body) end)
+    %{socket: lsock, pid: pid, port: port}
+  end
+
+  defp history_accept_loop(lsock, parent, status, body) do
+    case :gen_tcp.accept(lsock) do
+      {:ok, sock} ->
+        history_serve(sock, parent, status, body)
+        history_accept_loop(lsock, parent, status, body)
+
+      {:error, _reason} ->
+        :ok
+    end
+  end
+
+  defp history_serve(sock, parent, status, body) do
+    case read_request(sock) do
+      {:ok, method, path, req_body} ->
+        send(parent, {:history_capture, method, path, req_body})
+        response_body = retention_response_body(method, status, req_body, body)
+        _ = send_response(sock, status, response_body)
+
+      {:error, reason} ->
+        send(parent, {:history_capture_error, reason})
+    end
+
+    :gen_tcp.close(sock)
+  end
+
+  # For successful PUTs, mirror the requested history_retention_epochs back so
+  # the typed setter can validate the daemon-confirmed value.
+  defp retention_response_body("PUT", 200, req_body, default_body) do
+    with {:ok, decoded} <- JSON.decode(req_body),
+         epochs when is_integer(epochs) and epochs >= 0 <- decoded["history_retention_epochs"],
+         {:ok, default} <- JSON.decode(default_body),
+         earliest when is_integer(earliest) and earliest >= 0 <-
+           default["earliest_retained_epoch"] do
+      ~s({"history_retention_epochs":#{epochs},"earliest_retained_epoch":#{earliest}})
+    else
+      _ -> default_body
+    end
+  end
+
+  defp retention_response_body(_method, _status, _req_body, default_body), do: default_body
 
   defp receive_capture do
     receive do
@@ -279,5 +430,9 @@ defmodule MongrelDB.CreateTableWireTest do
           "no http_capture message received; diag: #{inspect(:erlang.process_info(self(), :messages))}"
         )
     end
+  end
+
+  defp col_by_name(columns, name) do
+    Enum.find(columns, fn col -> col["name"] == name end)
   end
 end
