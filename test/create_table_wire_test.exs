@@ -200,8 +200,7 @@ defmodule MongrelDB.CreateTableWireTest do
     assert {:error, %MongrelDB.AuthException{}} = MongrelDB.history_retention_epochs(db)
     assert {:error, %MongrelDB.AuthException{}} = MongrelDB.earliest_retained_epoch(db)
 
-    assert {:error, %MongrelDB.AuthException{}} =
-             MongrelDB.set_history_retention_epochs(db, 5)
+    assert {:error, %MongrelDB.AuthException{}} = MongrelDB.set_history_retention_epochs(db, 5)
   end
 
   test "history retention rejects malformed 2xx responses" do
@@ -216,8 +215,7 @@ defmodule MongrelDB.CreateTableWireTest do
       on_exit(fn -> stop_http_capture(server) end)
       db = MongrelDB.connect("http://127.0.0.1:#{server.port}")
 
-      assert {:error, %MongrelDB.QueryException{}} =
-               MongrelDB.history_retention_epochs(db)
+      assert {:error, %MongrelDB.QueryException{}} = MongrelDB.history_retention_epochs(db)
     end
   end
 
