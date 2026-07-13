@@ -27,10 +27,11 @@ defmodule MongrelDB.QueryBuilder do
           conditions: [map()],
           projection: [integer()] | nil,
           limit: integer() | nil,
+          offset: integer() | nil,
           truncated: boolean()
         }
 
-  defstruct [:db, :table, :projection, :limit, conditions: [], truncated: false]
+  defstruct [:db, :table, :projection, :limit, :offset, conditions: [], truncated: false]
 
   @doc """
   Add a native condition.
@@ -56,6 +57,12 @@ defmodule MongrelDB.QueryBuilder do
     %{q | limit: limit}
   end
 
+  @doc "Skip matching rows before applying the limit."
+  @spec offset(t(), integer()) :: t()
+  def offset(%__MODULE__{} = q, offset) do
+    %{q | offset: offset}
+  end
+
   @doc "Build the outgoing `/kit/query` payload."
   @spec build(t()) :: map()
   def build(%__MODULE__{} = q) do
@@ -72,6 +79,7 @@ defmodule MongrelDB.QueryBuilder do
         else: payload
 
     payload = if q.limit, do: Map.put(payload, "limit", q.limit), else: payload
+    payload = if q.offset, do: Map.put(payload, "offset", q.offset), else: payload
     payload
   end
 

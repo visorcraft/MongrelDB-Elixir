@@ -306,6 +306,7 @@ end
 | `QueryBuilder.where(query, type, params)` | Add a native condition |
 | `QueryBuilder.projection(query, column_ids)` | Set column projection |
 | `QueryBuilder.limit(query, limit)` | Set row limit |
+| `QueryBuilder.offset(query, offset)` | Skip matching rows before the limit |
 | `QueryBuilder.build(query)` | Build the request payload |
 | `QueryBuilder.execute(query)` | Run the query |
 | `QueryBuilder.truncated?(query)` | Whether the last result was capped |
