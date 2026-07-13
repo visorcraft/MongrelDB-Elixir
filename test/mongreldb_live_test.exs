@@ -250,7 +250,7 @@ defmodule MongrelDB.LiveTest do
     assert new_floor > initial_floor
 
     # The previously readable epoch is now below the floor and errors out.
-    assert {:error, %MongrelDB.QueryException{}} =
+    assert {:error, %MongrelDB.ConstraintException{}} =
              MongrelDB.sql(
                db(),
                "SELECT label FROM #{table} AS OF EPOCH #{old_epoch} WHERE id = 1"
@@ -260,7 +260,7 @@ defmodule MongrelDB.LiveTest do
     assert {:ok, _} = MongrelDB.set_history_retention_epochs(db(), 1000)
     assert {:ok, 1000} = MongrelDB.history_retention_epochs(db())
 
-    assert {:error, %MongrelDB.QueryException{}} =
+    assert {:error, %MongrelDB.ConstraintException{}} =
              MongrelDB.sql(
                db(),
                "SELECT label FROM #{table} AS OF EPOCH #{old_epoch} WHERE id = 1"
