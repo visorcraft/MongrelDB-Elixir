@@ -105,7 +105,8 @@ defmodule MongrelDB.QueryBuilder do
   def truncated?(%__MODULE__{truncated: truncated}), do: truncated
 
   # Translate friendly aliases to the server's canonical wire keys.
-  defp normalize_condition(type, params) do
+  @doc false
+  def normalize_condition(type, params) do
     aliases = %{
       "column" => "column_id",
       "min" => "lo",

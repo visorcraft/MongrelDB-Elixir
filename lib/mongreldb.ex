@@ -26,6 +26,7 @@ defmodule MongrelDB do
     NotFoundException,
     QueryBuilder,
     QueryException,
+    SearchBuilder,
     Transaction
   }
 
@@ -224,6 +225,10 @@ defmodule MongrelDB do
   """
   @spec query(t(), String.t()) :: QueryBuilder.t()
   def query(db, table), do: %QueryBuilder{db: db, table: table}
+
+  @doc "Start a hybrid SearchBuilder against `table` (POST /kit/search)."
+  @spec search(t(), String.t()) :: SearchBuilder.t()
+  def search(db, table), do: %SearchBuilder{db: db, table: table}
 
   @doc "Full schema catalog (table name to descriptor)."
   @spec schema(t()) :: {:ok, map()} | {:error, term()}
