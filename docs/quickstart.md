@@ -12,7 +12,7 @@ query.
 
   ```sh
   curl -L -o mongreldb-server \
-    https://github.com/visorcraft/MongrelDB/releases/download/v0.61.1/mongreldb-server-linux-x64
+    https://github.com/visorcraft/MongrelDB/releases/download/v0.62.0/mongreldb-server-linux-x64
   chmod +x mongreldb-server
   ./mongreldb-server ./data --port 8453
   ```
@@ -24,7 +24,7 @@ Add the dependency to `mix.exs`:
 ```elixir
 defp deps do
   [
-    {:mongreldb, "~> 0.61.1"}
+    {:mongreldb, "~> 0.62.0"}
   ]
 end
 ```
