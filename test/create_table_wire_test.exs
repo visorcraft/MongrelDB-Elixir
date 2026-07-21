@@ -100,7 +100,9 @@ defmodule MongrelDB.CreateTableWireTest do
             "m" => 24,
             "ef_construction" => 96,
             "ef_search" => 48,
-            "quantization" => "dense"
+            "quantization" => "dense",
+            "algorithm" => "diskann",
+            "diskann" => %{"r" => 64, "l" => 128, "beam_width" => 8, "alpha" => 120}
           }
         }
       },
@@ -121,6 +123,11 @@ defmodule MongrelDB.CreateTableWireTest do
 
     assert get_in(decoded, ["indexes", Access.at(2), "options", "ann", "quantization"]) ==
              "dense"
+
+    assert get_in(decoded, ["indexes", Access.at(2), "options", "ann", "algorithm"]) ==
+             "diskann"
+
+    assert get_in(decoded, ["indexes", Access.at(2), "options", "ann", "diskann", "r"]) == 64
 
     assert get_in(decoded, ["indexes", Access.at(2), "predicate"]) ==
              "embedding IS NOT NULL"
