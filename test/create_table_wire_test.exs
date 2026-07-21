@@ -69,6 +69,63 @@ defmodule MongrelDB.CreateTableWireTest do
     {:ok, server: server}
   end
 
+  test "create_table forwards all indexes and embedding source", %{server: server} do
+    db = MongrelDB.connect("http://127.0.0.1:#{server.port}")
+
+    columns = [
+      %{"id" => 1, "name" => "id", "ty" => "int64", "primary_key" => true},
+      %{
+        "id" => 2,
+        "name" => "embedding",
+        "ty" => "embedding(384)",
+        "embedding_source" => %{
+          "kind" => "configured_model",
+          "provider_id" => "docs",
+          "model_id" => "model",
+          "model_version" => "1"
+        }
+      }
+    ]
+
+    indexes = [
+      %{"name" => "bm", "column_id" => 1, "kind" => "bitmap"},
+      %{"name" => "fm", "column_id" => 1, "kind" => "fm_index"},
+      %{
+        "name" => "ann",
+        "column_id" => 2,
+        "kind" => "ann",
+        "predicate" => "embedding IS NOT NULL",
+        "options" => %{
+          "ann" => %{
+            "m" => 24,
+            "ef_construction" => 96,
+            "ef_search" => 48,
+            "quantization" => "dense"
+          }
+        }
+      },
+      %{"name" => "range", "column_id" => 1, "kind" => "learned_range"},
+      %{"name" => "minhash", "column_id" => 1, "kind" => "minhash"},
+      %{"name" => "sparse", "column_id" => 1, "kind" => "sparse"}
+    ]
+
+    assert {:ok, 0} = MongrelDB.create_table(db, "search_docs", columns, nil, indexes)
+    body = receive_capture()
+    {:ok, decoded} = JSON.decode(body)
+
+    assert get_in(decoded, ["columns", Access.at(1), "embedding_source", "kind"]) ==
+             "configured_model"
+
+    assert Enum.map(decoded["indexes"], & &1["kind"]) ==
+             ["bitmap", "fm_index", "ann", "learned_range", "minhash", "sparse"]
+
+    assert get_in(decoded, ["indexes", Access.at(2), "options", "ann", "quantization"]) ==
+             "dense"
+
+    assert get_in(decoded, ["indexes", Access.at(2), "predicate"]) ==
+             "embedding IS NOT NULL"
+  end
+
   test "create_table forwards enum_variants and default_value on the column map",
        %{server: server} do
     db = MongrelDB.connect("http://127.0.0.1:#{server.port}")

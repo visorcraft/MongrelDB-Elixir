@@ -282,6 +282,7 @@ end
 | `MongrelDB.table_names(db)` | List table names |
 | `MongrelDB.create_table(db, name, columns)` | Create a table, returns table id; column maps may include enum/default fields |
 | `MongrelDB.create_table(db, name, columns, constraints)` | Create a table with native `constraints` JSON (including CHECKs) |
+| `MongrelDB.create_table(db, name, columns, constraints, indexes)` | Create a table with all six index kinds and options |
 | `MongrelDB.drop_table(db, name)` | Drop a table |
 | `MongrelDB.count(db, table)` | Row count |
 | `MongrelDB.put(db, table, cells, opts)` | Insert a row |
