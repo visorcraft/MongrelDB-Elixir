@@ -257,7 +257,10 @@ defmodule MongrelDB do
     with {:ok, payload} <- build_retrieve_text_request(table, embedding_column, text, opts),
          {:ok, body} <- post_json(db, "/kit/retrieve_text", payload) do
       hits = if is_list(Map.get(body, "hits")), do: Map.get(body, "hits"), else: []
-      provenance = if is_map(Map.get(body, "provenance")), do: Map.get(body, "provenance"), else: %{}
+
+      provenance =
+        if is_map(Map.get(body, "provenance")), do: Map.get(body, "provenance"), else: %{}
+
       {:ok, %{"hits" => hits, "provenance" => provenance}}
     end
   end
@@ -265,6 +268,7 @@ defmodule MongrelDB do
   @doc false
   @spec build_retrieve_text_request(String.t(), non_neg_integer(), String.t(), keyword()) ::
           {:ok, map()} | {:error, term()}
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   def build_retrieve_text_request(table, embedding_column, text, opts \\ []) do
     cond do
       not is_binary(table) or table == "" ->

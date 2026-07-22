@@ -211,6 +211,7 @@ defmodule MongrelDB.QueryStatus do
   Prefer nested durable/outcome `serialization_state`, then `serialization`.
   """
   @spec serialization_state(t()) :: String.t()
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
   def serialization_state(%__MODULE__{} = s) do
     cond do
       is_binary(s.durable && s.durable.serialization_state) and
