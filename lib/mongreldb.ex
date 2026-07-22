@@ -26,6 +26,7 @@ defmodule MongrelDB do
     NotFoundException,
     QueryBuilder,
     QueryException,
+    QueryStatus,
     SearchBuilder,
     Transaction
   }
@@ -237,6 +238,112 @@ defmodule MongrelDB do
   @doc "Start a hybrid SearchBuilder against `table` (POST /kit/search)."
   @spec search(t(), String.t()) :: SearchBuilder.t()
   def search(db, table), do: %SearchBuilder{db: db, table: table}
+
+  @doc """
+  Text → embed under the active semantic identity → ANN retrieve
+  (`POST /kit/retrieve_text`, 0.64+).
+
+  ## Options
+
+    * `:k` - number of nearest neighbours to return
+    * `:deadline_ms` - soft deadline for the retrieve
+    * `:max_work` - engine work budget
+
+  Returns `{:ok, body}` with `hits` and `provenance` keys.
+  """
+  @spec retrieve_text(t(), String.t(), non_neg_integer(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def retrieve_text(db, table, embedding_column, text, opts \\ []) do
+    with {:ok, payload} <- build_retrieve_text_request(table, embedding_column, text, opts),
+         {:ok, body} <- post_json(db, "/kit/retrieve_text", payload) do
+      hits = if is_list(Map.get(body, "hits")), do: Map.get(body, "hits"), else: []
+      provenance = if is_map(Map.get(body, "provenance")), do: Map.get(body, "provenance"), else: %{}
+      {:ok, %{"hits" => hits, "provenance" => provenance}}
+    end
+  end
+
+  @doc false
+  @spec build_retrieve_text_request(String.t(), non_neg_integer(), String.t(), keyword()) ::
+          {:ok, map()} | {:error, term()}
+  def build_retrieve_text_request(table, embedding_column, text, opts \\ []) do
+    cond do
+      not is_binary(table) or table == "" ->
+        {:error, %QueryException{message: "table is required", reason: :invalid_retrieve_text}}
+
+      not is_binary(text) or text == "" ->
+        {:error, %QueryException{message: "text is required", reason: :invalid_retrieve_text}}
+
+      true ->
+        payload = %{
+          "table" => table,
+          "embedding_column" => embedding_column,
+          "text" => text
+        }
+
+        payload =
+          case Keyword.get(opts, :k) do
+            nil -> payload
+            k when is_integer(k) and k > 0 -> Map.put(payload, "k", k)
+            _ -> payload
+          end
+
+        payload =
+          case Keyword.get(opts, :deadline_ms) do
+            nil -> payload
+            v when is_integer(v) -> Map.put(payload, "deadline_ms", v)
+            _ -> payload
+          end
+
+        payload =
+          case Keyword.get(opts, :max_work) do
+            nil -> payload
+            v when is_integer(v) -> Map.put(payload, "max_work", v)
+            _ -> payload
+          end
+
+        {:ok, payload}
+    end
+  end
+
+  @doc """
+  Retained SQL execution status for durable recovery (`GET /queries/{query_id}`, 0.64+).
+
+  Returns a `%MongrelDB.QueryStatus{}` with structural `last_commit_hlc` and
+  `serialization_state` accessors — never string-parses free-form status text.
+  """
+  @spec query_status(t(), String.t()) :: {:ok, QueryStatus.t()} | {:error, term()}
+  def query_status(db, query_id) when is_binary(query_id) and query_id != "" do
+    with {:ok, body} <- get_json(db, "/queries/#{encode_segment(query_id)}") do
+      if is_map(body) and map_size(body) > 0 do
+        {:ok, QueryStatus.from_map(body)}
+      else
+        {:error,
+         %QueryException{
+           message: "query status response was not a JSON object",
+           reason: :invalid_query_status
+         }}
+      end
+    end
+  end
+
+  def query_status(_db, _query_id) do
+    {:error, %QueryException{message: "query_id is required", reason: :invalid_query_id}}
+  end
+
+  @doc """
+  Request cancellation of a running SQL query
+  (`POST /queries/{query_id}/cancel`, 0.64+).
+  """
+  @spec cancel_query(t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def cancel_query(db, query_id) when is_binary(query_id) and query_id != "" do
+    with {:ok, body} <- post_json(db, "/queries/#{encode_segment(query_id)}/cancel", %{}) do
+      {:ok, if(is_map(body), do: body, else: %{})}
+    end
+  end
+
+  def cancel_query(_db, _query_id) do
+    {:error, %QueryException{message: "query_id is required", reason: :invalid_query_id}}
+  end
 
   @doc "Full schema catalog (table name to descriptor)."
   @spec schema(t()) :: {:ok, map()} | {:error, term()}
