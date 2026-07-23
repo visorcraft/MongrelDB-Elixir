@@ -115,8 +115,7 @@ defmodule MongrelDB.DurableRetrieveTest do
   end
 
   test "build_retrieve_text_request shapes POST /kit/retrieve_text body" do
-    assert {:ok, payload} =
-             MongrelDB.build_retrieve_text_request("docs", 3, "cat sat", k: 5)
+    assert {:ok, payload} = MongrelDB.build_retrieve_text_request("docs", 3, "cat sat", k: 5)
 
     assert payload["table"] == "docs"
     assert payload["embedding_column"] == 3
