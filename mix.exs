@@ -1,7 +1,7 @@
 defmodule MongrelDB.MixProject do
   use Mix.Project
 
-  @version "0.64.5"
+  @version "0.64.6"
   @source_url "https://github.com/visorcraft/MongrelDB-Elixir"
   @homepage "https://www.mongreldb.com"
 
