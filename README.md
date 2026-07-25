@@ -24,7 +24,7 @@
 ```elixir
 def deps do
   [
-    {:mongreldb, "~> 0.64.9"}
+    {:mongreldb, "~> 0.64.10"}
   ]
 end
 ```
