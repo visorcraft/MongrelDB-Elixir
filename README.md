@@ -9,8 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://hex.pm/packages/mongreldb"><img src="https://img.shields.io/hexpm/v/mongreldb.svg" alt="Hex" /></a>
-  <a href="https://hexdocs.pm/mongreldb"><img src="https://img.shields.io/badge/docs-hexdocs-4B275F.svg" alt="HexDocs" /></a>
+  <a href="https://github.com/visorcraft/MongrelDB-Elixir"><img src="https://img.shields.io/badge/install-git%20dependency-4B275F.svg" alt="Install from GitHub" /></a>
   <a href="https://elixir-lang.org/"><img src="https://img.shields.io/badge/Elixir-%3E%3D1.14-4B275F.svg" alt="Elixir" /></a>
   <a href="#license"><img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg" alt="License" /></a>
 </p>
@@ -19,12 +18,14 @@
 
 | Surface | Package | Install |
 |---|---|---|
-| Elixir client | `mongreldb` | `mix deps.get` with `:mongreldb` in `deps/0` |
+| Elixir client | `mongreldb` | git dependency in `deps/0`, then `mix deps.get` |
+
+The package is not yet published to hex.pm, so pull it from GitHub:
 
 ```elixir
 def deps do
   [
-    {:mongreldb, "~> 0.64.14"}
+    {:mongreldb, github: "visorcraft/MongrelDB-Elixir"}
   ]
 end
 ```
