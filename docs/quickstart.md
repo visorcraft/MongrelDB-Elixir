@@ -19,12 +19,13 @@ query.
 
 ## Install
 
+The package is not yet published to hex.pm, so pull it from GitHub.
 Add the dependency to `mix.exs`:
 
 ```elixir
 defp deps do
   [
-    {:mongreldb, "~> 0.64.14"}
+    {:mongreldb, github: "visorcraft/MongrelDB-Elixir"}
   ]
 end
 ```

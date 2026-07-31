@@ -5,7 +5,8 @@ and how to report vulnerabilities.
 
 ## Overview
 
-The MongrelDB Elixir client is a Hex package that talks to `mongreldb-server`
+The MongrelDB Elixir client is an Elixir library (installed as a git
+dependency; not yet published to hex.pm) that talks to `mongreldb-server`
 over HTTP. The client itself holds no encryption keys and stores no data at
 rest; it is a thin request/response layer over the daemon.
 
