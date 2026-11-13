@@ -14,7 +14,9 @@ permissions:
 jobs:
   unit:
     name: Unit (Elixir ${{ matrix.elixir }})
-    runs-on: ubuntu-latest
+    # ubuntu-latest is 26.04, whose Hex builds no longer include OTP 25.
+    # 24.04 still has the OTP 25/27 pair this matrix tests.
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
